@@ -1,0 +1,1911 @@
+#!/usr/bin/perl
+
+# This is a program to load files into MySQL in parallel.
+#
+# This program is copyright (c) 2007 Baron Schwartz.  Feedback and improvements
+# are welcome.
+#
+# THIS PROGRAM IS PROVIDED "AS IS" AND WITHOUT ANY EXPRESS OR IMPLIED
+# WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED WARRANTIES OF
+# MERCHANTIBILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+#
+# This program is free software; you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free Software
+# Foundation, version 2; OR the Perl Artistic License.  On UNIX and similar
+# systems, you can issue `man perlgpl' or `man perlartistic' to read these
+# licenses.
+#
+# You should have received a copy of the GNU General Public License along with
+# this program; if not, write to the Free Software Foundation, Inc., 59 Temple
+# Place, Suite 330, Boston, MA  02111-1307  USA.
+
+# TODO: wrap float columns in CONVERT so they'll restore correctly.
+# TODO: wrap character columns in CONVERT so can specify a charset explicitly.
+# TODO: allow resuming.
+
+use strict;
+use warnings FATAL => 'all';
+
+our $VERSION = '1.0.8';
+our $DISTRIB = '2152';
+our $SVN_REV = sprintf("%d", (q$Revision: 2117 $ =~ m/(\d+)/g, 0));
+
+# ###########################################################################
+# OptionParser package 1967
+# ###########################################################################
+use strict;
+use warnings FATAL => 'all';
+
+package OptionParser;
+
+use Getopt::Long;
+use List::Util qw(max);
+use English qw(-no_match_vars);
+
+sub new {
+   my ( $class, @opts ) = @_;
+   my %key_seen;
+   my %long_seen;
+   my %key_for;
+   my %defaults;
+   my @mutex;
+   my @atleast1;
+   my %long_for;
+   my %disables;
+   my %copyfrom;
+   unshift @opts,
+      { s => 'help',    d => 'Show this help message' },
+      { s => 'version', d => 'Output version information and exit' };
+   foreach my $opt ( @opts ) {
+      if ( ref $opt ) {
+         my ( $long, $short ) = $opt->{s} =~ m/^([\w-]+)(?:\|([^!+=]*))?/;
+         $opt->{k} = $short || $long;
+         $key_for{$long} = $opt->{k};
+         $long_for{$opt->{k}} = $long;
+         $long_for{$long} = $long;
+         $opt->{l} = $long;
+         die "Duplicate option $opt->{k}" if $key_seen{$opt->{k}}++;
+         die "Duplicate long option $opt->{l}" if $long_seen{$opt->{l}}++;
+         $opt->{t} = $short;
+         $opt->{n} = $opt->{s} =~ m/!/;
+         $opt->{g} ||= 'o';
+         if ( (my ($y) = $opt->{s} =~ m/=([mdHhAaz])/) ) {
+            $ENV{MKDEBUG} && _d("Option $opt->{k} type: $y");
+            $opt->{y} = $y;
+            $opt->{s} =~ s/=./=s/;
+         }
+         if ( $opt->{d} =~ m/required/ ) {
+            $opt->{r} = 1;
+            $ENV{MKDEBUG} && _d("Option $opt->{k} is required");
+         }
+         if ( (my ($def) = $opt->{d} =~ m/default\b(?: ([^)]+))?/) ) {
+            $defaults{$opt->{k}} = defined $def ? $def : 1;
+            $ENV{MKDEBUG} && _d("Option $opt->{k} has a default");
+         }
+         if ( (my ($dis) = $opt->{d} =~ m/(disables .*)/) ) {
+            $disables{$opt->{k}} = [ $class->get_participants($dis) ];
+            $ENV{MKDEBUG} && _d("Option $opt->{k} $dis");
+         }
+      }
+      else { # It's an instruction.
+
+         if ( $opt =~ m/at least one|mutually exclusive|one and only one/ ) {
+            my @participants = map {
+                  die "No such option '$_' in $opt" unless $long_for{$_};
+                  $long_for{$_};
+               } $class->get_participants($opt);
+            if ( $opt =~ m/mutually exclusive|one and only one/ ) {
+               push @mutex, \@participants;
+               $ENV{MKDEBUG} && _d(@participants, ' are mutually exclusive');
+            }
+            if ( $opt =~ m/at least one|one and only one/ ) {
+               push @atleast1, \@participants;
+               $ENV{MKDEBUG} && _d(@participants, ' require at least one');
+            }
+         }
+         elsif ( $opt =~ m/default to/ ) {
+            my @participants = map {
+                  die "No such option '$_' in $opt" unless $long_for{$_};
+                  $key_for{$_};
+               } $class->get_participants($opt);
+            $copyfrom{$participants[0]} = $participants[1];
+            $ENV{MKDEBUG} && _d(@participants, ' copy from each other');
+         }
+
+      }
+   }
+
+   if ( $ENV{MKDEBUG} ) {
+      my $text = do {
+         local $RS = undef;
+         open my $fh, "<", $PROGRAM_NAME
+            or die "Can't open $PROGRAM_NAME: $OS_ERROR";
+         <$fh>;
+      };
+      my %used = map { $_ => 1 } $text =~ m/\$opts\{'?([\w-]+)'?\}/g;
+      my @unused;
+      my @undefined;
+      my %option_exists;
+      foreach my $opt ( @opts ) {
+         next unless ref $opt;
+         my $key = $opt->{k};
+         $option_exists{$key}++;
+         next if $opt->{l} =~ m/^(?:help|version|defaults-file|database|charset
+                                    |password|port|socket|user|host)$/x
+              || $disables{$key};
+         push @unused, $key unless $used{$key};
+      }
+      foreach my $key ( keys %used ) {
+         push @undefined, $key unless $option_exists{$key};
+      }
+      if ( @unused || @undefined ) {
+         die "The following command-line options are unused: "
+            . join(',', @unused)
+            . ' The following are undefined: '
+            . join(',', @undefined);
+      }
+   }
+
+   foreach my $dis ( keys %disables ) {
+      $disables{$dis} = [ map {
+            die "No such option '$_' while processing $dis" unless $long_for{$_};
+            $long_for{$_};
+         } @{$disables{$dis}} ];
+   }
+
+   return bless {
+      specs => [ grep { ref $_ } @opts ],
+      notes => [],
+      instr => [ grep { !ref $_ } @opts ],
+      mutex => \@mutex,
+      defaults => \%defaults,
+      long_for => \%long_for,
+      atleast1 => \@atleast1,
+      disables => \%disables,
+      key_for  => \%key_for,
+      copyfrom => \%copyfrom,
+      strict   => 1,
+      groups   => [ { k => 'o', d => 'Options' } ],
+   }, $class;
+}
+
+sub get_participants {
+   my ( $self, $str ) = @_;
+   my @participants;
+   foreach my $thing ( $str =~ m/(--?[\w-]+)/g ) {
+      if ( (my ($long) = $thing =~ m/--(.+)/) ) {
+         push @participants, $long;
+      }
+      else {
+         foreach my $short ( $thing =~ m/([^-])/g ) {
+            push @participants, $short;
+         }
+      }
+   }
+   $ENV{MKDEBUG} && _d("Participants for $str: ", @participants);
+   return @participants;
+}
+
+sub parse {
+   my ( $self, %defaults ) = @_;
+   my @specs = @{$self->{specs}};
+   my %factor_for = (k => 1_024, M => 1_048_576, G => 1_073_741_824);
+
+   my %opt_seen;
+   my %vals = %{$self->{defaults}};
+   @vals{keys %defaults} = values %defaults;
+   foreach my $spec ( @specs ) {
+      $vals{$spec->{k}} = undef unless defined $vals{$spec->{k}};
+      $opt_seen{$spec->{k}} = 1;
+   }
+
+   foreach my $key ( keys %defaults ) {
+      die "Cannot set default for non-existent option '$key'\n"
+         unless $opt_seen{$key};
+   }
+
+   Getopt::Long::Configure('no_ignore_case', 'bundling');
+   GetOptions( map { $_->{s} => \$vals{$_->{k}} } @specs )
+      or $self->error('Error parsing options');
+
+   if ( $vals{version} ) {
+      my $prog = $self->prog;
+      printf("%s  Ver %s Distrib %s Changeset %s\n",
+         $prog, $main::VERSION, $main::DISTRIB, $main::SVN_REV)
+         or die "Cannot print: $OS_ERROR";
+      exit(0);
+   }
+
+   if ( @ARGV && $self->{strict} ) {
+      $self->error("Unrecognized command-line options @ARGV");
+   }
+
+   foreach my $dis ( grep { defined $vals{$_} } keys %{$self->{disables}} ) {
+      my @disses = map { $self->{key_for}->{$_} } @{$self->{disables}->{$dis}};
+      $ENV{MKDEBUG} && _d("Unsetting options: ", @disses);
+      @vals{@disses} = map { undef } @disses;
+   }
+
+   foreach my $spec ( grep { $_->{r} } @specs ) {
+      if ( !defined $vals{$spec->{k}} ) {
+         $self->error("Required option --$spec->{l} must be specified");
+      }
+   }
+
+   foreach my $mutex ( @{$self->{mutex}} ) {
+      my @set = grep { defined $vals{$self->{key_for}->{$_}} } @$mutex;
+      if ( @set > 1 ) {
+         my $note = join(', ',
+            map { "--$self->{long_for}->{$_}" }
+                @{$mutex}[ 0 .. scalar(@$mutex) - 2] );
+         $note .= " and --$self->{long_for}->{$mutex->[-1]}"
+               . " are mutually exclusive.";
+         $self->error($note);
+      }
+   }
+
+   foreach my $required ( @{$self->{atleast1}} ) {
+      my @set = grep { defined $vals{$self->{key_for}->{$_}} } @$required;
+      if ( !@set ) {
+         my $note = join(', ',
+            map { "--$self->{long_for}->{$_}" }
+                @{$required}[ 0 .. scalar(@$required) - 2] );
+         $note .= " or --$self->{long_for}->{$required->[-1]}";
+         $self->error("Specify at least one of $note");
+      }
+   }
+
+   foreach my $spec ( grep { $_->{y} && defined $vals{$_->{k}} } @specs ) {
+      my $val = $vals{$spec->{k}};
+      if ( $spec->{y} eq 'm' ) {
+         my ( $num, $suffix ) = $val =~ m/(\d+)([a-z])?$/;
+         if ( !$suffix ) {
+            my ( $s ) = $spec->{d} =~ m/\(suffix (.)\)/;
+            $suffix = $s || 's';
+            $ENV{MKDEBUG} && _d("No suffix given; using $suffix for $spec->{k} "
+               . "(value: '$val')");
+         }
+         if ( $suffix =~ m/[smhd]/ ) {
+            $val = $suffix eq 's' ? $num            # Seconds
+                 : $suffix eq 'm' ? $num * 60       # Minutes
+                 : $suffix eq 'h' ? $num * 3600     # Hours
+                 :                  $num * 86400;   # Days
+            $vals{$spec->{k}} = $val;
+            $ENV{MKDEBUG} && _d("Setting option $spec->{k} to $val");
+         }
+         else {
+            $self->error("Invalid --$spec->{l} argument");
+         }
+      }
+      elsif ( $spec->{y} eq 'd' ) {
+         $ENV{MKDEBUG} && _d("Parsing option $spec->{y} as a DSN");
+         my $from_key = $self->{copyfrom}->{$spec->{k}};
+         my $default = {};
+         if ( $from_key ) {
+            $ENV{MKDEBUG} && _d("Option $spec->{y} DSN copies from option $from_key");
+            $default = $self->{dsn}->parse($self->{dsn}->as_string($vals{$from_key}));
+         }
+         $vals{$spec->{k}} = $self->{dsn}->parse($val, $default);
+      }
+      elsif ( $spec->{y} eq 'z' ) {
+         my ($pre, $num, $factor) = $val =~ m/^([+-])?(\d+)([kMG])?$/;
+         if ( defined $num ) {
+            if ( $factor ) {
+               $num *= $factor_for{$factor};
+               $ENV{MKDEBUG} && _d("Setting option $spec->{y} to num * factor");
+            }
+            $vals{$spec->{k}} = ($pre || '') . $num;
+         }
+         else {
+            $self->error("Invalid --$spec->{l} argument");
+         }
+      }
+   }
+
+   foreach my $spec ( grep { $_->{y} } @specs ) {
+      $ENV{MKDEBUG} && _d("Treating option $spec->{k} as a list");
+      my $val = $vals{$spec->{k}};
+      if ( $spec->{y} eq 'H' || (defined $val && $spec->{y} eq 'h') ) {
+         $vals{$spec->{k}} = { map { $_ => 1 } split(',', ($val || '')) };
+      }
+      elsif ( $spec->{y} eq 'A' || (defined $val && $spec->{y} eq 'a') ) {
+         $vals{$spec->{k}} = [ split(',', ($val || '')) ];
+      }
+   }
+
+   return %vals;
+}
+
+sub error {
+   my ( $self, $note ) = @_;
+   $self->{__error__} = 1;
+   push @{$self->{notes}}, $note;
+}
+
+sub prog {
+   (my $prog) = $PROGRAM_NAME =~ m/([.A-Za-z-]+)$/;
+   return $prog || $PROGRAM_NAME;
+}
+
+sub prompt {
+   my ( $self ) = @_;
+   my $prog   = $self->prog;
+   my $prompt = $self->{prompt} || '<options>';
+   return "Usage: $prog $prompt\n";
+}
+
+sub descr {
+   my ( $self ) = @_;
+   my $prog = $self->prog;
+   my $descr  = $prog . ' ' . ($self->{descr} || '')
+          . "  For more details, please use the --help option, "
+          . "or try 'perldoc $prog' for complete documentation.";
+   $descr = join("\n", $descr =~ m/(.{0,80})(?:\s+|$)/g);
+   $descr =~ s/ +$//mg;
+   return $descr;
+}
+
+sub usage_or_errors {
+   my ( $self, %opts ) = @_;
+   if ( $opts{help} ) {
+      print $self->usage(%opts)
+         or die "Cannot print: $OS_ERROR";
+      exit(0);
+   }
+   elsif ( $self->{__error__} ) {
+      print $self->errors()
+         or die "Cannot print: $OS_ERROR";
+      exit(0);
+   }
+}
+
+sub errors {
+   my ( $self ) = @_;
+   my $usage = $self->prompt() . "\n";
+   if ( (my @notes = @{$self->{notes}}) ) {
+      $usage .= join("\n  * ", 'Errors in command-line arguments:', @notes) . "\n";
+   }
+   return $usage . "\n" . $self->descr();
+}
+
+sub usage {
+   my ( $self, %vals ) = @_;
+   my @specs = @{$self->{specs}};
+
+   my $maxl = max(map { length($_->{l}) + ($_->{n} ? 4 : 0)} @specs);
+
+   my $maxs = max(0,
+      map { length($_->{l}) + ($_->{n} ? 4 : 0)}
+      grep { $_->{t} } @specs);
+
+   my $lcol = max($maxl, ($maxs + 3));
+   my $rcol = 80 - $lcol - 6;
+   my $rpad = ' ' x ( 80 - $rcol );
+
+   $maxs = max($lcol - 3, $maxs);
+
+   my $usage = $self->descr() . "\n" . $self->prompt();
+   foreach my $g ( @{$self->{groups}} ) {
+      $usage .= "\n$g->{d}:\n";
+      foreach my $spec (
+         sort { $a->{l} cmp $b->{l} } grep { $_->{g} eq $g->{k} } @specs )
+      {
+         my $long  = $spec->{n} ? "[no]$spec->{l}" : $spec->{l};
+         my $short = $spec->{t};
+         my $desc  = $spec->{d};
+         if ( $spec->{y} && $spec->{y} eq 'm' ) {
+            my ($s) = $desc =~ m/\(suffix (.)\)/;
+            $s    ||= 's';
+            $desc =~ s/\s+\(suffix .\)//;
+            $desc .= ".  Optional suffix s=seconds, m=minutes, h=hours, "
+                   . "d=days; if no suffix, $s is used.";
+         }
+         $desc = join("\n$rpad", grep { $_ } $desc =~ m/(.{0,$rcol})(?:\s+|$)/g);
+         $desc =~ s/ +$//mg;
+         if ( $short ) {
+            $usage .= sprintf("  --%-${maxs}s -%s  %s\n", $long, $short, $desc);
+         }
+         else {
+            $usage .= sprintf("  --%-${lcol}s  %s\n", $long, $desc);
+         }
+      }
+   }
+
+   if ( (my @instr = @{$self->{instr}}) ) {
+      $usage .= join("\n", map { "  $_" } @instr) . "\n";
+   }
+   if ( $self->{dsn} ) {
+      $usage .= "\n" . $self->{dsn}->usage();
+   }
+   $usage .= "\nOptions and values after processing arguments:\n";
+   foreach my $spec ( sort { $a->{l} cmp $b->{l} } @specs ) {
+      my $val   = $vals{$spec->{k}};
+      my $type  = $spec->{y} || '';
+      my $bool  = $spec->{s} =~ m/^[\w-]+(?:\|[\w-])?!?$/;
+      $val      = $bool                     ? ( $val ? 'TRUE' : 'FALSE' )
+                : !defined $val             ? '(No value)'
+                : $type eq 'd'              ? $self->{dsn}->as_string($val)
+                : $type =~ m/H|h/           ? join(',', sort keys %$val)
+                : $type =~ m/A|a/           ? join(',', @$val)
+                :                             $val;
+      $usage .= sprintf("  --%-${lcol}s  %s\n", $spec->{l}, $val);
+   }
+   return $usage;
+}
+
+sub pod_to_spec {
+   my ( $self, $file ) = @_;
+
+   my %types = (
+      'time' => 'm',
+      'int'  => 'i',
+      string => 's',
+      hash   => 'h',
+      Hash   => 'H',
+      array  => 'a',
+      Array  => 'A',
+      size   => 'z',
+      DSN    => 'd',
+      float  => 'f',
+   );
+
+   my @spec = ();
+   my @special_options = ();
+   $file ||= __FILE__;
+   open my $fh, "<", $file or die "Can't open $file: $OS_ERROR";
+   my $para;
+
+   local $INPUT_RECORD_SEPARATOR = '';
+   while ( $para = <$fh> ) {
+      next unless $para =~ m/^=head1 OPTIONS/;
+      last;
+   }
+
+   while ( $para = <$fh> ) {
+      $ENV{MKDEBUG} && _d($para);
+      last if $para =~ m/^=over/;
+      chomp $para;
+      $para =~ s/\s+/ /g;
+      $para =~ s/[LC]<"?([^">]+)"?>/$1/g;
+      push @special_options, $para;
+   }
+
+   do {
+      if ( my ($option) = $para =~ m/^=item --(.*)/ ) {
+         $ENV{MKDEBUG} && _d($para);
+         my %props;
+         $para = <$fh>;
+         if ( $para =~ m/: / ) {
+            $para =~ s/\s+\Z//g;
+            %props = map { split(/: /, $_) } split(/; /, $para);
+            if ( $props{'short form'} ) {
+               $props{'short form'} =~ s/-//;
+            }
+            $para = <$fh>;
+         }
+         $para =~ s/\s+\Z//g;
+         $para =~ s/\s+/ /g;
+         $para =~ s/[LC]<"?([^">]+)"?>/$1/g;
+         if ( $para =~ m/^[^.]+\.$/ ) {
+            $para =~ s/\.$//;
+         }
+         push @spec, {
+            s => $option
+               . ( $props{'short form'} ? '|' . $props{'short form'} : '' )
+               . ( $props{'negatable'}  ? '!'                        : '' )
+               . ( $props{'cumulative'} ? '+'                        : '' )
+               . ( $props{type}         ? '=' . $types{$props{type}} : '' ),
+            d => $para
+               . (defined $props{default} ? " (default $props{default})" : ''),
+         };
+      }
+      while ( $para = <$fh> ) {
+         last unless $para;
+         if ( $para =~ m/^=head1/ ) {
+            $para = undef; # Can't 'last' out of a do {} block.
+            last;
+         }
+         last if $para =~ m/^=item --/;
+      }
+   } while ( $para );
+
+   close $fh;
+   return @spec, @special_options;
+}
+
+sub prompt_noecho {
+   shift @_ if ref $_[0] eq __PACKAGE__;
+   my ( $prompt ) = @_;
+   local $OUTPUT_AUTOFLUSH = 1;
+   print $prompt
+      or die "Cannot print: $OS_ERROR";
+   my $response;
+   eval {
+      require Term::ReadKey;
+      Term::ReadKey::ReadMode('noecho');
+      chomp($response = <STDIN>);
+      Term::ReadKey::ReadMode('normal');
+      print "\n"
+         or die "Cannot print: $OS_ERROR";
+   };
+   if ( $EVAL_ERROR ) {
+      die "Cannot read response; is Term::ReadKey installed? $EVAL_ERROR";
+   }
+   return $response;
+}
+
+sub groups {
+   my ( $self, @groups ) = @_;
+   push @{$self->{groups}}, @groups;
+}
+
+sub _d {
+   my ( $line ) = (caller(0))[2];
+   print "# OptionParser:$line $PID ", @_, "\n";
+}
+
+if ( $ENV{MKDEBUG} ) {
+   print '# ', $^X, ' ', $], "\n";
+   my $uname = `uname -a`;
+   if ( $uname ) {
+      $uname =~ s/\s+/ /g;
+      print "# $uname\n";
+   }
+   printf("# %s  Ver %s Distrib %s Changeset %s line %d\n",
+      $PROGRAM_NAME, ($main::VERSION || ''), ($main::DISTRIB || ''),
+      ($main::SVN_REV || ''), __LINE__);
+   print('# Arguments: ',
+      join(' ', map { my $a = "_[$_]_"; $a =~ s/\n/\n# /g; $a; } @ARGV), "\n");
+}
+
+1;
+
+# ###########################################################################
+# End OptionParser package
+# ###########################################################################
+
+# ###########################################################################
+# Quoter package 1755
+# ###########################################################################
+use strict;
+use warnings FATAL => 'all';
+
+package Quoter;
+
+use English qw(-no_match_vars);
+
+sub new {
+   my ( $class ) = @_;
+   bless {}, $class;
+}
+
+sub quote {
+   my ( $self, @vals ) = @_;
+   foreach my $val ( @vals ) {
+      $val =~ s/`/``/g;
+   }
+   return join('.', map { '`' . $_ . '`' } @vals);
+}
+
+sub quote_val {
+   my ( $self, @vals ) = @_;
+   return join(', ',
+      map {
+         if ( defined $_ ) {
+            $_ =~ s/(['\\])/\\$1/g;
+            $_ eq '' || $_ =~ m/^0|\D/ ? "'$_'" : $_;
+         }
+         else {
+            'NULL';
+         }
+      } @vals
+   );
+}
+
+1;
+
+# ###########################################################################
+# End Quoter package
+# ###########################################################################
+
+# ###########################################################################
+# DSNParser package 2005
+# ###########################################################################
+use strict;
+use warnings FATAL => 'all';
+
+package DSNParser;
+
+use DBI;
+use Data::Dumper;
+$Data::Dumper::Indent    = 0;
+$Data::Dumper::Quotekeys = 0;
+use English qw(-no_match_vars);
+
+sub new {
+   my ( $class, @opts ) = @_;
+   my $self = {
+      opts => {
+         A => {
+            desc => 'Default character set',
+            dsn  => 'charset',
+            copy => 1,
+         },
+         D => {
+            desc => 'Database to use',
+            dsn  => 'database',
+            copy => 1,
+         },
+         F => {
+            desc => 'Only read default options from the given file',
+            dsn  => 'mysql_read_default_file',
+            copy => 1,
+         },
+         h => {
+            desc => 'Connect to host',
+            dsn  => 'host',
+            copy => 1,
+         },
+         p => {
+            desc => 'Password to use when connecting',
+            dsn  => 'password',
+            copy => 1,
+         },
+         P => {
+            desc => 'Port number to use for connection',
+            dsn  => 'port',
+            copy => 1,
+         },
+         S => {
+            desc => 'Socket file to use for connection',
+            dsn  => 'mysql_socket',
+            copy => 1,
+         },
+         u => {
+            desc => 'User for login if not current user',
+            dsn  => 'user',
+            copy => 1,
+         },
+      },
+   };
+   foreach my $opt ( @opts ) {
+      $ENV{MKDEBUG} && _d('Adding extra property ' . $opt->{key});
+      $self->{opts}->{$opt->{key}} = { desc => $opt->{desc}, copy => $opt->{copy} };
+   }
+   return bless $self, $class;
+}
+
+sub prop {
+   my ( $self, $prop, $value ) = @_;
+   if ( @_ > 2 ) {
+      $ENV{MKDEBUG} && _d("Setting $prop property");
+      $self->{$prop} = $value;
+   }
+   return $self->{$prop};
+}
+
+sub parse {
+   my ( $self, $dsn, $prev, $defaults ) = @_;
+   if ( !$dsn ) {
+      $ENV{MKDEBUG} && _d('No DSN to parse');
+      return;
+   }
+   $ENV{MKDEBUG} && _d("Parsing $dsn");
+   $prev     ||= {};
+   $defaults ||= {};
+   my %vals;
+   my %opts = %{$self->{opts}};
+   if ( $dsn !~ m/=/ && (my $p = $self->prop('autokey')) ) {
+      $ENV{MKDEBUG} && _d("Interpreting $dsn as $p=$dsn");
+      $dsn = "$p=$dsn";
+   }
+   my %hash = map { m/^(.)=(.*)$/g } split(/,/, $dsn);
+   foreach my $key ( keys %opts ) {
+      $ENV{MKDEBUG} && _d("Finding value for $key");
+      $vals{$key} = $hash{$key};
+      if ( !defined $vals{$key} && defined $prev->{$key} && $opts{$key}->{copy} ) {
+         $vals{$key} = $prev->{$key};
+         $ENV{MKDEBUG} && _d("Copying value for $key from previous DSN");
+      }
+      if ( !defined $vals{$key} ) {
+         $vals{$key} = $defaults->{$key};
+         $ENV{MKDEBUG} && _d("Copying value for $key from defaults");
+      }
+   }
+   foreach my $key ( keys %hash ) {
+      die "Unrecognized DSN part '$key' in '$dsn'\n"
+         unless exists $opts{$key};
+   }
+   if ( (my $required = $self->prop('required')) ) {
+      foreach my $key ( keys %$required ) {
+         die "Missing DSN part '$key' in '$dsn'\n" unless $vals{$key};
+      }
+   }
+   return \%vals;
+}
+
+sub as_string {
+   my ( $self, $dsn ) = @_;
+   return $dsn unless ref $dsn;
+   return join(',',
+      map  { "$_=" . ($_ eq 'p' ? '...' : $dsn->{$_}) }
+      grep { defined $dsn->{$_} && $self->{opts}->{$_} }
+      sort keys %$dsn );
+}
+
+sub usage {
+   my ( $self ) = @_;
+   my $usage
+      = "DSN syntax is key=value[,key=value...]  Allowable DSN keys:\n"
+      . "  KEY  COPY  MEANING\n"
+      . "  ===  ====  =============================================\n";
+   my %opts = %{$self->{opts}};
+   foreach my $key ( sort keys %opts ) {
+      $usage .= "  $key    "
+             .  ($opts{$key}->{copy} ? 'yes   ' : 'no    ')
+             .  ($opts{$key}->{desc} || '[No description]')
+             . "\n";
+   }
+   if ( (my $key = $self->prop('autokey')) ) {
+      $usage .= "  If the DSN is a bareword, the word is treated as the '$key' key.\n";
+   }
+   return $usage;
+}
+
+sub get_cxn_params {
+   my ( $self, $info ) = @_;
+   my $dsn;
+   my %opts = %{$self->{opts}};
+   my $driver = $self->prop('dbidriver') || '';
+   if ( $driver eq 'Pg' ) {
+      $dsn = 'DBI:Pg:dbname=' . ( $info->{D} || '' ) . ';'
+         . join(';', map  { "$opts{$_}->{dsn}=$info->{$_}" }
+                     grep { defined $info->{$_} }
+                     qw(h P));
+   }
+   else {
+      $dsn = 'DBI:mysql:' . ( $info->{D} || '' ) . ';'
+         . join(';', map  { "$opts{$_}->{dsn}=$info->{$_}" }
+                     grep { defined $info->{$_} }
+                     qw(F h P S A))
+         . ';mysql_read_default_group=mysql';
+   }
+   $ENV{MKDEBUG} && _d($dsn);
+   return ($dsn, $info->{u}, $info->{p});
+}
+
+sub fill_in_dsn {
+   my ( $self, $dbh, $dsn ) = @_;
+   my $vars = $dbh->selectall_hashref('SHOW VARIABLES', 'Variable_name');
+   my ($user, $db) = $dbh->selectrow_array('SELECT USER(), DATABASE()');
+   $user =~ s/@.*//;
+   $dsn->{h} ||= $vars->{hostname}->{Value};
+   $dsn->{S} ||= $vars->{'socket'}->{Value};
+   $dsn->{P} ||= $vars->{port}->{Value};
+   $dsn->{u} ||= $user;
+   $dsn->{D} ||= $db;
+}
+
+sub get_dbh {
+   my ( $self, $cxn_string, $user, $pass, $opts ) = @_;
+   $opts ||= {};
+   my $defaults = {
+      AutoCommit        => 0,
+      RaiseError        => 1,
+      PrintError        => 0,
+      mysql_enable_utf8 => ($cxn_string =~ m/charset=utf8/ ? 1 : 0),
+   };
+   @{$defaults}{ keys %$opts } = values %$opts;
+   $ENV{MKDEBUG} && _d($cxn_string, ' ', $user, ' ', $pass, ' {',
+      join(', ', map { "$_=>$defaults->{$_}" } keys %$defaults ), '}');
+   my $dbh = DBI->connect($cxn_string, $user, $pass, $defaults);
+   if ( my ($charset) = $cxn_string =~ m/charset=(\w+)/ ) {
+      my $sql = "/*!40101 SET NAMES $charset*/";
+      $ENV{MKDEBUG} && _d("$dbh: $sql");
+      $dbh->do($sql);
+      $ENV{MKDEBUG} && _d('Enabling charset for STDOUT');
+      if ( $charset eq 'utf8' ) {
+         binmode(STDOUT, ':utf8')
+            or die "Can't binmode(STDOUT, ':utf8'): $OS_ERROR";
+      }
+      else {
+         binmode(STDOUT) or die "Can't binmode(STDOUT): $OS_ERROR";
+      }
+   }
+   my $setvars = $self->prop('setvars');
+   if ( $cxn_string =~ m/mysql/i && $setvars ) {
+      my $sql = "SET $setvars";
+      $ENV{MKDEBUG} && _d("$dbh: $sql");
+      $dbh->do($sql);
+   }
+   $ENV{MKDEBUG} && _d('DBH info: ',
+      $dbh,
+      Dumper($dbh->selectrow_hashref(
+         'SELECT DATABASE(), CONNECTION_ID(), VERSION()/*!50038 , @@hostname*/')),
+      ' Connection info: ', ($dbh->{mysql_hostinfo} || 'undef'),
+      ' Character set info: ',
+      Dumper($dbh->selectall_arrayref(
+         'SHOW VARIABLES LIKE "character_set%"', { Slice => {}})),
+      ' $DBD::mysql::VERSION: ', $DBD::mysql::VERSION,
+      ' $DBI::VERSION: ', $DBI::VERSION,
+   );
+   return $dbh;
+}
+
+sub get_hostname {
+   my ( $self, $dbh ) = @_;
+   if ( my ($host) = ($dbh->{mysql_hostinfo} || '') =~ m/^(\w+) via/ ) {
+      return $host;
+   }
+   my ( $hostname, $one ) = $dbh->selectrow_array(
+      'SELECT /*!50038 @@hostname, */ 1');
+   return $hostname;
+}
+
+sub disconnect {
+   my ( $self, $dbh ) = @_;
+   $ENV{MKDEBUG} && $self->print_active_handles($dbh);
+   $dbh->disconnect;
+}
+
+sub print_active_handles {
+   my ( $self, $thing, $level ) = @_;
+   $level ||= 0;
+   printf("# Active %sh: %s %s %s\n", ($thing->{Type} || 'undef'), "\t" x $level,
+      $thing, (($thing->{Type} || '') eq 'st' ? $thing->{Statement} || '' : ''))
+      or die "Cannot print: $OS_ERROR";
+   foreach my $handle ( grep {defined} @{ $thing->{ChildHandles} } ) {
+      $self->print_active_handles->( $handle, $level + 1 );
+   }
+}
+
+sub _d {
+   my ( $line ) = (caller(0))[2];
+   @_ = map { defined $_ ? $_ : 'undef' } @_;
+   print "# DSNParser:$line $PID ", @_, "\n";
+}
+
+1;
+
+# ###########################################################################
+# End DSNParser package
+# ###########################################################################
+
+package main;
+
+use English qw(-no_match_vars);
+use File::Basename qw(dirname);
+use File::Find;
+use File::Spec;
+use List::Util qw(max sum);
+use POSIX;
+use Time::HiRes qw(time);
+
+my @conn_params;
+my $dp = new DSNParser;
+
+# ############################################################################
+# Get configuration information.
+# ############################################################################
+my $q          = new Quoter();
+my @opt_spec   = OptionParser::pod_to_spec();
+my $opt_parser = new OptionParser(@opt_spec);
+$opt_parser->{strict} = 0;
+$opt_parser->{prompt} = '<options> PATH [PATH...]';
+$opt_parser->{descr} = 'loads files into MySQL in parallel.';
+
+my %opts = (
+   basedir  => File::Spec->curdir(),
+);
+eval {
+   # Try to read --numthread from the number of CPUs in /proc/cpuinfo.  This
+   # only works on GNU/Linux.
+   open my $file, "<", "/proc/cpuinfo"
+      or die $OS_ERROR;
+   local $INPUT_RECORD_SEPARATOR = undef;
+   my $contents = <$file>;
+   close $file;
+   $opts{m} = scalar( map { $_ } $contents =~ m/(processor)/g );
+};
+$opts{m} ||= $ENV{NUMBER_OF_PROCESSORS}; # MSWin32
+$opts{m} = max(2, $opts{m} || 0);
+
+%opts = $opt_parser->parse(%opts);
+$dp->prop('setvars', $opts{setvars});
+
+# ############################################################################
+# Process options.
+# ############################################################################
+$opts{basedir} = File::Spec->rel2abs($opts{basedir});
+
+if ( $opts{q} ) {
+   # TODO: 'sets --verbose 0'
+   $opts{v} = 0;
+}
+
+if ( $opts{csv} ) {
+   # TODO: 'implies --tab'
+   $opts{T} = 1;
+}
+
+if ( $opts{T} ) { # TODO 'implies
+   $opts{disablekeys}    = 1 unless defined $opts{disablekeys};
+   $opts{noautovalon0}   = 1 unless defined $opts{noautovalon0};
+   $opts{nobinlog}       = 1 unless defined $opts{nobinlog};
+   $opts{nouniquechecks} = 1 unless defined $opts{nouniquechecks};
+   $opts{noforeignkeys}  = 1 unless defined $opts{noforeignkeys};
+}
+
+if ( !@ARGV ) {
+   $opt_parser->error("You did not specify any files to restore");
+}
+
+foreach my $opt ( qw(locktables truncate disablekeys noautovalon0
+                     nouniquechecks noforeignkeys nobinlog
+                     bulkinsbufsize commit L i r) ) {
+   if ( defined $opts{$opt} && !$opts{T} ) {
+      $opt_parser->error('Option ' . (length($opt) > 1 ? '--' : '-')
+         . "$opt is ineffective without --tab or --csv");
+   }
+}
+
+if ( $opts{fifo} ) {
+   if ( !defined $opts{umask} ) {
+      $opts{umask} = 0;
+   }
+}
+
+if ( defined $opts{umask} ) {
+   umask oct($opts{umask});
+}
+
+$opt_parser->usage_or_errors(%opts);
+
+# ############################################################################
+# Gather connection parameters to pass to mysql.  Order matters; mysql
+# will have a problem if --defaults-file isn't first.
+# ############################################################################
+if ( !defined $opts{p} && $opts{askpass} ) {
+   $opts{p} = OptionParser::prompt_noecho("Enter password: ");
+}
+@conn_params = (
+   [qw(--defaults-file F)],
+   [qw(--host          h)],
+   [qw(--password      p)],
+   [qw(--port          P)],
+   [qw(--socket        S)],
+   [qw(--user          u)],
+);
+@conn_params = map { "$_->[0]='$opts{$_->[1]}'" } grep { defined $opts{$_->[1]} } @conn_params;
+
+# ############################################################################
+# Connect.
+# ############################################################################
+my $dbh = get_cxn();
+$dbh->{InactiveDestroy}  = 1;         # Don't die on fork().
+$dbh->{FetchHashKeyName} = 'NAME_lc'; # Lowercases all column names for fetchrow_hashref()
+
+# ############################################################################
+# Discover files to be restored.
+# ############################################################################
+my @tables_to_do;
+my @view_files;
+my %files_for_table;
+my %size_for_table;
+my %stats;
+my $known_filetypes = 'sql|txt|csv|trg';
+my $bytes = 0; # For progress measurements
+
+# Find directories and files and save them.
+File::Find::find(
+   {  no_chdir => 1,
+      wanted   => sub {
+         my ( $dir, $filename ) = ($File::Find::dir, $File::Find::name);
+         if ( -f $filename && $filename !~ m/00_(?:master|views)/ ) {
+            my ($vol, $dirs, $file) = File::Spec->splitpath( $filename );
+            if ( $file =~ m/\.(?:$known_filetypes)(?:\.\d+)?(?:\.gz)?$/ ) {
+               my @dirs  = grep { $_ } File::Spec->splitdir($dir);
+               my $db    = $opts{D} || $dirs[-1];
+               my ($tbl) = $file =~ m/^([^.]+)/;
+
+               if ( ( !$opts{d} || exists($opts{d}->{$db}) )
+                  && ( !$opts{dbregex} || $db =~ m/$opts{dbregex}/ )
+                  && ( !exists $opts{g}->{$db} )
+                  && ( !exists $opts{n}->{$tbl} )
+                  && ( !exists $opts{n}->{"$db.$tbl"} )
+                  && ( !$opts{t} || exists($opts{t}->{$tbl}) )
+                  && ( !$opts{tblregex} || $tbl =~ m/$opts{tblregex}/ )
+               ) {
+                  if ( filetype($file) !~ m/sql|trg/ && !$opts{T} ) {
+                     die "$filename isn't a SQL file and you didn't tell me "
+                        . "to load tab-delimited files.  Maybe you should "
+                        . "specify the --tab option.\n";
+                  }
+                  $stats{files}++;
+                  push @{$files_for_table{$db}->{$tbl}}, $filename;
+                  my $size = -s $filename; # For progress measurements
+                  $bytes += $size;
+                  $size_for_table{$db}->{$tbl} += $size;
+                  push @tables_to_do, {   # This pushes a dupe, filtered later.
+                     D => $db,
+                     N => $tbl,
+                  };
+               }
+            }
+         }
+         elsif ( $filename =~ m/00_views.sql/ ) {
+            $stats{files}++;
+            push @view_files, $filename;
+         }
+         elsif ( ! -d $filename && $filename !~ m/00_master_data.sql/ ) {
+            info(1, "Skipping file $filename");
+         }
+      },
+   },
+   map { File::Spec->rel2abs($_) } @ARGV
+);
+
+# ############################################################################
+# Canonicalize table list in the order they were discovered, filtering out
+# tables that should not be done. TODO: do tables biggest-first so they
+# parallelize best (optionally, but enabled by default if only 1 @ARGV -- if > 1
+# then user probably wanted to load tables in a specific order).
+# ############################################################################
+{
+   my %seen;
+   @tables_to_do = grep { !$seen{$_->{D}}->{$_->{N}}++ } @tables_to_do;
+   $stats{tables} = scalar(@tables_to_do);
+
+   if ( $opts{createdb} ) {
+      my %dbs;
+      map { $dbs{ $_->{D} }++ } @tables_to_do;
+      foreach my $db ( keys %dbs ) {
+         $dbh->do("CREATE DATABASE IF NOT EXISTS " . $q->quote($db));
+      }
+   }
+
+}
+
+# #########################################################################
+# Design the format for printing out.
+# #########################################################################
+my ( $maxdb, $maxtbl);
+$maxdb  = max(8, map { length($_->{D}) } @tables_to_do);
+$maxtbl = max(5, map { length($_->{N}) } @tables_to_do);
+my $format = "%-${maxdb}s %-${maxtbl}s %5s %5s %6s %7s";
+info(2, sprintf($format, qw(DATABASE TABLE FILES TIME STATUS THREADS)));
+
+# This signal handler will do nothing but wake up the sleeping parent process
+# and record the exit status and time of the child that exited (as a side
+# effect of not discarding the signal).  Due to Solaris's signal handling and
+# File::Find's use of forking, this must go after File::Find.  See
+# bug #1887102.
+my %exited_children;
+$SIG{CHLD} = sub {
+   my $kid;
+   while (($kid = waitpid(-1, POSIX::WNOHANG)) > 0) {
+      # Must right-shift to get the actual exit status of the child.
+      $exited_children{$kid}->{exit_status} = $CHILD_ERROR >> 8;
+      $exited_children{$kid}->{exit_time}   = time();
+   }
+};
+
+# #########################################################################
+# Assign the work to child processes.  Initially just start --numthreads
+# number of children.  Each child that exits will trigger a new one to start
+# after that.
+# #########################################################################
+my $start = time();
+my $done  = 0; # For progress measurements.
+
+my %kids;
+while ( @tables_to_do || %kids ) {
+
+   # Wait for the MySQL server to become responsive.
+   my $tries = 0;
+   while ( !$dbh->ping && $tries++ < $opts{w} ) {
+      sleep(1);
+      eval {
+         $dbh = get_cxn();
+      };
+      if ( $EVAL_ERROR ) {
+         info(0, 'Waiting: ' . scalar(localtime) . ' ' . mysql_error_msg($EVAL_ERROR));
+      }
+   }
+   if ( $tries >= $opts{w} ) {
+      die "Too many retries, exiting.\n";
+   }
+
+   # Start a new child process.
+   while ( @tables_to_do && $opts{m} > keys %kids ) {
+      my $todo = shift @tables_to_do;
+      $todo->{time} = time;
+      my $pid = fork();
+      die "Can't fork: $OS_ERROR" unless defined $pid;
+      if ( $pid ) {              # I'm the parent
+         $kids{$pid} = $todo;
+      }
+      else {                     # I'm the child
+         $SIG{CHLD} = 'DEFAULT'; # See bug #1886444
+         my $exit_status = 0;
+         $exit_status = do_table(
+            @{$todo}{qw(D N)},
+            @{$files_for_table{$todo->{D}}->{$todo->{N}}}
+         ) || $exit_status;
+         exit($exit_status);
+      }
+   }
+
+   # Possibly wait for child.
+   my $reaped = 0;
+   foreach my $kid ( keys %exited_children ) {
+      my $status = $exited_children{$kid};
+      my $todo   = $kids{$kid};
+      my $stat   = $status->{exit_status};
+      my $time   = $status->{exit_time} - $todo->{time};
+      info(2, sprintf($format, @{$todo}{qw(D N)},
+         scalar(@{$files_for_table{$todo->{D}}->{$todo->{N}}}),
+         sprintf('%.2f', $time), $stat, scalar(keys %kids)));
+      $stats{ $stat ? 'failure' : 'success' }++;
+      $stats{time} += $time;
+      delete $kids{$kid};
+      delete $exited_children{$kid};
+      $reaped = 1;
+      $done += $size_for_table{$todo->{D}}->{$todo->{N}};
+
+      if ( $opts{progress} ) {
+         my $pct = $done / $bytes;
+         my $now = time();
+         my $remaining = ($now - $start) / $pct;
+         info(1, sprintf("done: %s/%s %6.2f%% %s remain (%s)",
+            shorten($done), shorten($bytes), $pct * 100,
+            secs_to_time($remaining), ts($now + $remaining)));
+      }
+   }
+
+   if ( !$reaped ) {
+      # Don't busy-wait.  But don't wait forever either, as a child may exit
+      # and signal while we're not sleeping, so if we sleep forever we may
+      # not get the signal.
+      sleep(1);
+   }
+}
+
+# Load views.
+foreach my $file ( @view_files ) {
+   my @args;
+   if ( $file =~ m/\.gz/ ) {
+      @args = (qw(gunzip --stdout), qq{'$file'}, qw(| mysql), @conn_params);
+   }
+   else {
+      @args = (qw(mysql), @conn_params, '<', qq{'$file'});
+   }
+   my $exit_status = system_call( @args );
+   $stats{ $exit_status ? 'failure' : 'success' }++;
+}
+
+$stats{wallclock} = time() - $start;
+
+info(1, sprintf(
+   '%5d tables, %5d files, %5d successes, %2d failures, '
+   . '%6.2f wall-clock time, %6.2f load time',
+      map {
+         $stats{$_} || 0
+      } qw(tables files success failure wallclock time)
+   ));
+
+# Exit status is 1 if there were any failures.
+exit( $stats{failure} ? 1 : 0 );
+
+# ############################################################################
+# Subroutines
+# ############################################################################
+
+# TODO: modularize
+sub secs_to_time {
+   my ( $secs, $fmt ) = @_;
+   $secs ||= 0;
+   return '00:00' unless $secs;
+
+   # Decide what format to use, if not given
+   $fmt ||= $secs >= 86_400 ? 'd'
+          : $secs >= 3_600  ? 'h'
+          :                   'm';
+
+   return
+      $fmt eq 'd' ? sprintf(
+         "%d+%02d:%02d:%02d",
+         int($secs / 86_400),
+         int(($secs % 86_400) / 3_600),
+         int(($secs % 3_600) / 60),
+         $secs % 60)
+      : $fmt eq 'h' ? sprintf(
+         "%02d:%02d:%02d",
+         int(($secs % 86_400) / 3_600),
+         int(($secs % 3_600) / 60),
+         $secs % 60)
+      : sprintf(
+         "%02d:%02d",
+         int(($secs % 3_600) / 60),
+         $secs % 60);
+}
+
+# TODO: modularize
+sub shorten {
+   my ( $num ) = @_;
+   my $n = 0;
+   while ( $num >= 1_024 ) {
+      $num /= 1_024;
+      ++$n;
+   }
+   return sprintf(
+      $num =~ m/\./ || $n
+         ? "%.2f%s"
+         : '%d',
+      $num, ('','k','M','G', 'T')[$n]);
+}
+
+# TODO: modularize
+sub ts {
+   my ( $time ) = @_;
+   my ( $sec, $min, $hour, $mday, $mon, $year )
+      = localtime($time);
+   $mon  += 1;
+   $year += 1900;
+   return sprintf("%d-%02d-%02dT%02d:%02d:%02d",
+      $year, $mon, $mday, $hour, $min, $sec);
+}
+
+sub makefifo {
+   my $filename = File::Spec->catfile($opts{basedir}, "mpr_fifo_$PID");
+   if ( !-p $filename ) {
+      if ( -e $filename ) {
+         die "Cannot make fifo: $filename exists";
+      }
+      if ( $opts{test} ) {
+         print "mkfifo $filename\n";
+      }
+      else {
+         POSIX::mkfifo($filename, 0777) or die "Cannot make fifo $filename: $OS_ERROR";
+      }
+   }
+   return $filename;
+}
+
+sub mysql_error_msg {
+   my ( $text ) = @_;
+   $text =~ s/^.*?failed: (.*?) at \S+ line (\d+).*$/$1 at line $2/s;
+   return $text;
+}
+
+# Prints a message.
+sub info {
+   my ( $level, $msg ) = @_;
+   if ( $level <= $opts{v} ) {
+      print $msg, "\n";
+   }
+}
+
+# Actually restores a table.
+sub do_table {
+   my ( $db, $tbl, @files ) = @_;
+   my $exit_status = 0;
+
+   # Sort files.  If it's a --tab, this will result in the following load
+   # order:
+   # * sql     (drop and create table)
+   # * txt/csv (load data into table)
+   # * trg     (create triggers)
+   # Later we'll do the views from the 00_views file, after all tables are
+   # recreated.
+   @files = sort {
+      my $a_type = filetype($a);
+      my $b_type = filetype($b);
+      (index($known_filetypes, $a_type) <=> index($known_filetypes, $b_type))
+         || ($a cmp $b);
+   } @files;
+
+   my $dbh;
+
+   my ($fifo, $load_from, $loaded);
+
+   foreach my $file ( @files ) {
+
+      if ( filetype($file) =~ m/^(?:sql|trg)$/ ) {
+         my @args;
+         if ( $file =~ m/\.gz/ ) {
+            @args = (qw(gunzip --stdout), qq{'$file'}, qw(| mysql),
+                     @conn_params, $db);
+         }
+         else {
+            @args = (qw(mysql), @conn_params, $db, '<', qq{'$file'});
+         }
+         $exit_status = system_call( @args ) || $exit_status;
+      }
+      else {
+
+         if ( $file =~ m/\.gz$/ ) {
+            if ( $opts{fifo} ) {
+               $fifo ||= makefifo();
+               $exit_status
+                  = system_call(qq{gunzip --stdout '$file' > '$fifo' &}) || $exit_status;
+               $load_from = $fifo;
+            }
+            else {
+               $exit_status = system_call(qq{gunzip '$file'}) || $exit_status;
+               ( $load_from = $file ) =~ s/\.gz$//;
+            }
+         }
+         else {
+            $load_from = $file;
+         }
+
+         my $sql;
+         my $LOCAL = $opts{L} ? ' LOCAL' : '';
+         my $OPT   = $opts{i} ? 'IGNORE' : $opts{r} ? 'REPLACE' : '';
+         if ( $opts{csv} ) {
+            $sql  = qq{LOAD DATA$LOCAL INFILE ? }
+                  . qq{$OPT INTO TABLE `$db`.`$tbl` }
+                  . qq{FIELDS TERMINATED BY ',' OPTIONALLY ENCLOSED BY '\\"' }
+                  . qq{LINES TERMINATED BY '\\n' }
+                  . qq{/*!50038 CHARACTER SET $opts{A} */};
+         }
+         elsif ( $opts{T} ) {
+            $sql  = qq{LOAD DATA$LOCAL INFILE ? }
+                  . qq{$OPT INTO TABLE `$db`.`$tbl` }
+                  . qq{/*!50038 CHARACTER SET $opts{A} */};
+         }
+
+         if ( $sql ) {
+            if ( $opts{test} ) {
+               print $sql, "\n";
+            }
+            else {
+
+               # First loop through.
+               if ( !$loaded++ ) {
+                  $dbh ||= get_cxn();
+                  if ( $opts{locktables} ) {
+                     $dbh->do("LOCK TABLES `$db`.`$tbl` WRITE");
+                  }
+                  if ( $opts{truncate} ) {
+                     $dbh->do("TRUNCATE TABLE `$db`.`$tbl`");
+                  }
+               }
+
+               # Every loop through, set options.
+               $dbh ||= get_cxn();
+               $dbh->do("USE `$db`"); # For binary logging.
+               if ( $opts{disablekeys} ) {
+                  $dbh->do("/*!40000 ALTER TABLE `$db`.`$tbl` DISABLE KEYS */");
+               }
+               if ( $opts{noautovalon0} ) {
+                  $dbh->do('/*!40101 SET SQL_MODE="NO_AUTO_VALUE_ON_ZERO" */');
+               }
+               if ( $opts{nouniquechecks} ) {
+                  $dbh->do('SET UNIQUE_CHECKS=0');
+               }
+               if ( $opts{noforeignkeys} ) {
+                  $dbh->do('SET FOREIGN_KEY_CHECKS=0');
+               }
+               if ( $opts{nobinlog} ) {
+                  $dbh->do('SET SQL_LOG_BIN=0');
+               }
+               if ( $opts{bulkinsbufsize} ) {
+                  $dbh->do("SET SESSION bulk_insert_buffer_size=$opts{bulkinsbufsize}");
+               }
+
+               eval {
+                  $dbh->do($sql, {}, $load_from);
+                  $dbh->commit if $opts{commit};
+               };
+               if ( $EVAL_ERROR ) {
+                  die mysql_error_msg($EVAL_ERROR) . " while restoring $db.$tbl";
+               }
+            }
+         }
+         else {
+            unlink $fifo if $fifo;
+            die "I don't understand how to load file $file\n";
+         }
+      }
+   }
+
+   if ( $dbh && $opts{T} ) {
+      if ( $opts{disablekeys} ) {
+         $dbh->do("/*!40000 ALTER TABLE `$db`.`$tbl` ENABLE KEYS */");
+      }
+      if ( $opts{locktables} ) {
+         $dbh->do("LOCK TABLES `$db`.`$tbl` WRITE");
+      }
+   }
+
+   if ( !$opts{test} && $fifo ) {
+      unlink $fifo;
+   }
+
+   $dbh->disconnect() if $dbh;
+   return $exit_status;
+}
+
+sub filetype {
+   my ( $filename ) = @_;
+   my ( $type ) = $filename =~ m/\.(sql|txt|csv|trg)(?:\.\d+)?(?:\.gz)?$/;
+   return $type || '';
+}
+
+sub get_cxn {
+   my %params = %opts;
+   delete $params{D}; # Because it has a special meaning; see documentation.
+   my $dbh = $dp->get_dbh($dp->get_cxn_params(\%params));
+   if ( $opts{A} ) {
+      $dbh->do("/*!40101 SET character_set_database=$opts{A} */");
+   }
+   return $dbh;
+}
+
+sub system_call {
+   my ( @cmd ) = @_;
+   my $exit_status = 0;
+   if ( $opts{test} ) {
+      print join(' ', @cmd), "\n";
+   }
+   else {
+      $exit_status = system(join(' ', @cmd));
+      # Must right-shift to get the actual exit status of the command.
+      # Otherwise the upstream exit() call that's about to happen will get a
+      # larger value than it likes, and will just report zero to waitpid().
+      $exit_status = $exit_status >> 8;
+   }
+   return $exit_status;
+}
+
+# ############################################################################
+# Documentation.
+# ############################################################################
+
+=pod
+
+=head1 NAME
+
+mk-parallel-restore - Load files into MySQL in parallel.
+
+=head1 SYNOPSIS
+
+  mk-parallel-restore /path/to/files
+  mk-parallel-restore --tab /path/to/files
+
+Do not rely on mk-parallel-restore for your backups unless you have tested it.
+You have been warned.
+
+=head1 DESCRIPTION
+
+mk-parallel-restore is a way to load SQL or delimited-file dumps into MySQL
+in parallel at high speed.  It is especially designed for restoring files
+dumped by L<mk-parallel-dump>.  It automatically
+detects whether a file contains SQL or delimited data from the filename
+extension, and either shells out to C<mysql> or executes C<LOAD DATA INFILE>
+with the file.  On UNIX-like systems, it will even make a FIFO to decompress
+gzipped files for C<LOAD DATA INFILE>.
+
+By default it discovers all files in the directory you specify on the command
+line.  It uses the file's parent directory as the database name and the file's
+name (up to the first dot) as the table name.  It can deal with files named
+like the following:
+
+  dir/tbl.sql
+  dir/tbl.txt
+  dir/tbl.csv
+  dir/tbl.trg
+
+It is also happy with files that look like this, where C<EXT> is one of the
+extensions just listed.
+
+  dir/tbl.EXT.000
+  dir/tbl.EXT.000.gz
+
+By default, it loads C<SQL> files first, if they exist, then loads C<CSV> or
+C<TXT> files next, in order of the numbers in the filename extension as just
+shown.  This makes it easy for you to reload a table's definition followed by
+its data, in case you dumped them into separate files (as happens with
+C<mysqldump>'s C<--tab> option).  It loads C<TRG> files, which create
+triggers, last.  Creating the triggers before loading data might keep the data
+from being restored correctly.  Files that are named 00_views.sql are loaded
+even later, after all the parallel restores are finished; dependencies among
+views and tables make them hard to restore one at a time.  See
+L<mk-parallel-dump> for details on how data is dumped.
+
+Exit status is 0 if everything went well, 1 if any files failed, and any
+other value indicates an internal error.
+
+=head1 OUTPUT
+
+Output depends on verbosity.  When L<"--test"> is given, output includes
+commands that would be executed.
+
+When L<"--verbose"> is 0, there is normally no output unless there's an error.
+
+When L<"--verbose"> is 1, there is one line of output for the entire job,
+showing how many tables were processed, how many files were loaded with what
+status, how much time elapsed, and how much time the parallel load jobs added
+up to.  If any files were skipped, the filenames are printed to the output.
+
+When L<"--verbose"> is 2, there's one line of output per table, showing extra
+data such as how many threads were running when each table finished loading:
+
+  DATABASE TABLE            FILES  TIME STATUS THREADS
+  sakila   language             2  0.07      0       2
+  sakila   film_actor           2  0.07      0       2
+  sakila   actor                2  0.06      0       2
+  sakila   payment              2  0.07      0       2
+  sakila   transport_backup     2  0.05      0       2
+  sakila   country              2  0.08      0       2
+  sakila   film                 2  0.05      0       2
+  sakila   rental               2  0.07      0       2
+
+=head1 SPEED OF PARALLEL LOADING
+
+User-contributed benchmarks are welcome.  See
+L<http://www.paragon-cs.com/wordpress/?p=52> for one user's experiences.
+
+=head1 DOWNLOADING
+
+You can download Maatkit from Google Code at
+L<http://code.google.com/p/maatkit/>, or you can get any of the tools
+easily with a command like the following:
+
+   wget http://www.maatkit.org/get/toolname
+   or
+   wget http://www.maatkit.org/trunk/toolname
+
+Where C<toolname> can be replaced with the name (or fragment of a name) of any
+of the Maatkit tools.  Once downloaded, they're ready to run; no installation is
+needed.  The first URL gets the latest released version of the tool, and the
+second gets the latest trunk code from Subversion.
+
+=head1 OPTIONS
+
+=over
+
+=item --askpass
+
+Prompt for a password when connecting to MySQL.
+
+=item --basedir
+
+type: string
+
+Directory where FIFO files will be created.
+
+=item --bulkinsbufsize
+
+type: int
+
+Set bulk_insert_buffer_size before each C<LOAD DATA INFILE>.
+
+Has no effect without L<"--tab">.
+
+=item --charset
+
+short form: -A; type: string; default: BINARY
+
+Sets the connection, database, and C<LOAD DATA INFILE> character set.
+
+The default is C<BINARY>, which is the safest value to use for C<LOAD DATA
+INFILE>.  Has no effect without L<"--tab">.
+
+=item --commit
+
+Commit after each load via C<LOAD DATA INFILE>.
+
+=item --createdb
+
+Create databases if they don't exist.
+
+=item --csv
+
+Files are in CSV format (implies L<"--tab">).
+
+Changes L<"--tab"> options so the following C<LOAD DATA INFILE> statement is used:
+
+   LOAD DATA INFILE <filename> INTO TABLE <table>
+   FIELDS TERMINATED BY ',' OPTIONALLY ENCLOSED BY '\"'
+   LINES TERMINATED BY '\n';
+
+=item --database
+
+short form: -D; type: string
+
+Load all files into this database.
+
+Overrides the database which is normally specified by the directory in which the
+files live.  Does I<not> specify a default database for the connection.
+
+=item --databases
+
+short form: -d; type: hash
+
+Restore only this comma-separated list of databases.
+
+=item --dbregex
+
+type: string
+
+Restore only databases whose names match this regex.
+
+=item --defaults-file
+
+short form: -F; type: string
+
+Only read mysql options from the given file.  You must give an absolute
+pathname.
+
+=item --disablekeys
+
+negatable: yes
+
+Execute C<ALTER TABLE DISABLE KEYS> before each table.
+
+=item --fifo
+
+negatable: yes; default: yes
+
+Stream files into a FIFO for --tab.
+
+Load compressed tab-separated files by piping them into a FIFO and using the
+FIFO with C<LOAD DATA INFILE>, instead of by decompressing the files on disk.
+Sets L<"--umask"> to 0.
+
+=item --host
+
+short form: -h; type: string
+
+Connect to host.
+
+=item --ignore
+
+short form: -i
+
+Adds the C<IGNORE> modifier to C<LOAD DATA INFILE>.
+
+=item --ignoredb
+
+short form: -g; type: Hash
+
+Ignore this comma-separated list of databases.
+
+=item --ignoretbl
+
+short form: -n; type: Hash
+
+Ignore this comma-separated list of table names.
+
+Table names may be qualified with the database name.
+
+=item --local
+
+short form: -L
+
+Uses the C<LOCAL> option to C<LOAD DATA INFILE>.
+
+If you enable this option, the files are read locally by the client library, not
+by the server.
+
+=item --locktables
+
+negatable: yes
+
+Lock tables before C<LOAD DATA INFILE>.
+
+=item --noautovalon0
+
+negatable: yes
+
+Set SQL C<NO_AUTO_VALUE_ON_ZERO> before C<LOAD DATA INFILE>.
+
+=item --nobinlog
+
+negatable: yes
+
+Set C<SQL_LOG_BIN=0> before C<LOAD DATA INFILE>.
+
+This prevents large loads from being logged to the server's binary log.
+
+=item --noforeignkeys
+
+negatable: yes
+
+Set C<FOREIGN_KEY_CHECKS=0> before C<LOAD DATA INFILE>.
+
+=item --nouniquechecks
+
+negatable: yes
+
+Set C<UNIQUE_CHECKS=0> before C<LOAD DATA INFILE>.
+
+=item --numthread
+
+short form: -m; type: int
+
+Specifies the number of parallel processes to run.
+
+The default is 2 (this is mk-parallel-restore after all -- 1 is not parallel).
+On GNU/Linux machines, the default is the number of times 'processor' appears in
+F</proc/cpuinfo>.  On Windows, the default is read from the environment.  In any
+case, the default is at least 2, even when there's only a single processor.
+
+=item --password
+
+short form: -p; type: string
+
+Password to use when connecting.
+
+=item --port
+
+short form: -P; type: int
+
+Port number to use for connection.
+
+=item --progress
+
+Display progress messages.
+
+Progress is displayed each time a table finishes loading.  Progress is
+calculated by measuring the size of each file to be loaded, and assuming all
+bytes are created equal.  The output is the completed and total size, the
+percent completed, estimated time remaining, and estimated completion time.
+
+=item --quiet
+
+short form: -q
+
+Sets L<"--verbose"> to 0.
+
+=item --replace
+
+short form: -r
+
+Adds the C<REPLACE> modifier to C<LOAD DATA INFILE>.
+
+=item --setvars
+
+type: string; default: wait_timeout=10000
+
+Set these MySQL variables.
+
+Specify any variables you want to be set immediately after connecting to MySQL.
+These will be included in a C<SET> command.
+
+=item --socket
+
+short form: -S; type: string
+
+Socket file to use for connection.
+
+=item --tab
+
+short form: -T
+
+Load tab-separated files with C<LOAD DATA INFILE>.
+
+This is similar to what C<mysqlimport> does, but more flexible.
+Enables the following options, unless they are specifically disabled:
+L<"--commit">, L<"--disablekeys">, L<"--noautovalon0">, L<"--nobinlog">,
+L<"--nouniquechecks">, L<"--noforeignkeys">.
+
+=item --tables
+
+short form: -t; type: hash
+
+Restore only this comma-separated list of table names.
+
+Table names may be qualified with the database name.
+
+=item --tblregex
+
+type: string
+
+Restore only tables whose names match this regex.
+
+=item --test
+
+Print commands instead of executing them.
+
+=item --truncate
+
+Run C<TRUNCATE TABLE> before C<LOAD DATA INFILE>.
+
+This will delete all rows from a table before loading the first tab-delimited
+file into it.
+
+=item --umask
+
+type: string
+
+Set the program's C<umask> to this octal value.
+
+This is useful when you want created files (such as FIFO files) to be readable
+or writable by other users (for example, the MySQL server itself).
+
+=item --user
+
+short form: -u; type: string
+
+User for login if not current user.
+
+=item --verbose
+
+short form: -v; cumulative: yes; default: 1
+
+Verbosity; can specify multiple times.
+
+Repeatedly specifying it increments the verbosity.  Default is 1 if not
+specified.  See L<"OUTPUT">.
+
+=item --wait
+
+short form: -w; type: time; default: 5m
+
+Wait limit when server is down.
+
+If the MySQL server crashes during loading, waits until the server comes back
+and then continues with the rest of the files.  C<mk-parallel-restore> will
+check the server every second until this time is exhausted, at which point it
+will give up and exit.
+
+=back
+
+=head1 ENVIRONMENT
+
+The environment variable C<MKDEBUG> enables verbose debugging output in all of
+the Maatkit tools:
+
+   MKDEBUG=1 mk-....
+
+=head1 SYSTEM REQUIREMENTS
+
+You need Perl, DBI, DBD::mysql, and some core packages that ought to be
+installed in any reasonably new version of Perl.
+
+=head1 BUGS
+
+Please use Google Code Issues and Groups to report bugs or request support:
+L<http://code.google.com/p/maatkit/>.
+
+Please include the complete command-line used to reproduce the problem you are
+seeing, the version of all MySQL servers involved, the complete output of the
+tool when run with L<"--version">, and if possible, debugging output produced by
+running with the C<MKDEBUG=1> environment variable.
+
+=head1 COPYRIGHT, LICENSE AND WARRANTY
+
+This program is copyright (c) 2007 Baron Schwartz.  Feedback and improvements
+are welcome.
+
+THIS PROGRAM IS PROVIDED "AS IS" AND WITHOUT ANY EXPRESS OR IMPLIED
+WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED WARRANTIES OF
+MERCHANTIBILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+
+This program is free software; you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, version 2; OR the Perl Artistic License.  On UNIX and similar
+systems, you can issue `man perlgpl' or `man perlartistic' to read these
+licenses.
+
+You should have received a copy of the GNU General Public License along with
+this program; if not, write to the Free Software Foundation, Inc., 59 Temple
+Place, Suite 330, Boston, MA  02111-1307  USA.
+
+=head1 AUTHOR
+
+Baron Schwartz.
+
+=head1 SEE ALSO
+
+See also L<mk-parallel-dump>.
+
+=head1 VERSION
+
+This manual page documents Ver 1.0.8 Distrib 2152 $Revision: 2117 $.
+
+=cut

@@ -1,0 +1,3618 @@
+#!/usr/bin/perl
+
+# This is a program to dump sets of MySQL tables in parallel, via mysqldump or
+# SELECT INTO OUTFILE.
+#
+# This program is copyright (c) 2007 Baron Schwartz.  Feedback and improvements
+# are welcome.
+#
+# THIS PROGRAM IS PROVIDED "AS IS" AND WITHOUT ANY EXPRESS OR IMPLIED
+# WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED WARRANTIES OF
+# MERCHANTIBILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+#
+# This program is free software; you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free Software
+# Foundation, version 2; OR the Perl Artistic License.  On UNIX and similar
+# systems, you can issue `man perlgpl' or `man perlartistic' to read these
+# licenses.
+#
+# You should have received a copy of the GNU General Public License along with
+# this program; if not, write to the Free Software Foundation, Inc., 59 Temple
+# Place, Suite 330, Boston, MA  02111-1307  USA.
+
+use strict;
+use warnings FATAL => 'all';
+
+our $VERSION = '1.0.9';
+our $DISTRIB = '2152';
+our $SVN_REV = sprintf("%d", (q$Revision: 2142 $ =~ m/(\d+)/g, 0));
+
+# ###########################################################################
+# MySQLFind package 1831
+# ###########################################################################
+use strict;
+use warnings FATAL => 'all';
+
+package MySQLFind;
+
+use Data::Dumper;
+$Data::Dumper::Indent    = 0;
+$Data::Dumper::Quotekeys = 0;
+use English qw(-no_match_vars);
+
+
+use English qw(-no_match_vars);
+
+sub new {
+   my ( $class, %args ) = @_;
+   my $self = bless \%args, $class;
+   map { die "I need a $_ argument" unless defined $args{$_} } qw(dumper quoter);
+   die "Do not pass me a dbh argument" if $args{dbh};
+   $self->{engines}->{views} = 1 unless defined $self->{engines}->{views};
+   if ( $args{useddl} ) {
+      $ENV{MKDEBUG} && _d('Will prefer DDL');
+   }
+   return $self;
+}
+
+sub init_timestamp {
+   my ( $self, $dbh ) = @_;
+   return if $self->{timestamp}->{$dbh}->{now};
+   my $sql = 'SELECT CURRENT_TIMESTAMP';
+   $ENV{MKDEBUG} && _d($sql);
+   ($self->{timestamp}->{$dbh}->{now}) = $dbh->selectrow_array($sql);
+   $ENV{MKDEBUG} && _d("Current timestamp: $self->{timestamp}->{$dbh}->{now}");
+}
+
+sub find_databases {
+   my ( $self, $dbh ) = @_;
+   return grep {
+      $_ !~ m/^(information_schema|lost\+found)$/i
+   }  $self->_filter('databases', sub { $_[0] },
+         $self->{dumper}->get_databases(
+            $dbh,
+            $self->{quoter},
+            $self->{databases}->{like}));
+}
+
+sub find_tables {
+   my ( $self, $dbh, %args ) = @_;
+   my $views = $self->{engines}->{views};
+   my @tables 
+      = $self->_filter('engines', sub { $_[0]->{engine} },
+         $self->_filter('tables', sub { $_[0]->{name} },
+            $self->_fetch_tbl_list($dbh, %args)));
+   @tables = grep {
+         ( $views || ($_->{engine} ne 'VIEW') )
+      } @tables;
+   map { $_->{name} =~ s/^[^.]*\.// } @tables; # <database>.<table> => <table> 
+   foreach my $crit ( @{$self->{tables}->{status}} ) {
+      my ($key, $test) = %$crit;
+      @tables
+         = grep {
+            $self->_test_date($_, $key, $test, $dbh)
+         } @tables;
+   }
+   return map { $_->{name} } @tables;
+}
+
+sub find_views {
+   my ( $self, $dbh, %args ) = @_;
+   my @tables = $self->_fetch_tbl_list($dbh, %args);
+   @tables = grep { $_->{engine} eq 'VIEW' } @tables;
+   map { $_->{name} =~ s/^[^.]*\.// } @tables; # <database>.<table> => <table> 
+   return map { $_->{name} } @tables;
+}
+
+sub _use_db {
+   my ( $self, $dbh, $new ) = @_;
+   if ( !$new ) {
+      $ENV{MKDEBUG} && _d('No new DB to use');
+      return;
+   }
+   my $sql = 'SELECT DATABASE()';
+   $ENV{MKDEBUG} && _d($sql);
+   my $curr = $dbh->selectrow_array($sql);
+   if ( $curr && $new && $curr eq $new ) {
+      $ENV{MKDEBUG} && _d('Current and new DB are the same');
+      return $curr;
+   }
+   $sql = 'USE ' . $self->{quoter}->quote($new);
+   $ENV{MKDEBUG} && _d($sql);
+   $dbh->do($sql);
+   return $curr;
+}
+
+sub _fetch_tbl_list {
+   my ( $self, $dbh, %args ) = @_;
+   die "database is required" unless $args{database};
+   my $curr_db = $self->_use_db($dbh, $args{database});
+   my $need_engine = $self->{engines}->{permit}
+        || $self->{engines}->{reject}
+        || $self->{engines}->{regexp};
+   my $need_status = $self->{tables}->{status};
+   if ( $need_status || ($need_engine && !$self->{useddl}) ) {
+      my @tables = $self->{dumper}->get_table_status(
+         $dbh,
+         $self->{quoter},
+         $args{database},
+         $self->{tables}->{like});
+      @tables = map {
+         my %hash = %$_;
+         $hash{name} = join('.', $args{database}, $hash{name});
+         \%hash;
+      } @tables;
+      return @tables;
+   }
+   else {
+      my @result;
+      my @tables = $self->{dumper}->get_table_list(
+         $dbh,
+         $self->{quoter},
+         $args{database},
+         $self->{tables}->{like});
+      foreach my $tbl ( @tables ) {
+         if ( $need_engine && !$tbl->{engine} ) {
+            my $struct = $self->{parser}->parse(
+               $self->{dumper}->get_create_table(
+                  $dbh, $self->{quoter}, $args{database}, $tbl->{name}));
+            $tbl->{engine} = $struct->{engine};
+         }
+         push @result,
+         {  name   => join('.', $args{database}, $tbl->{name}),
+            engine => $tbl->{engine},
+         }
+      }
+      return @result;
+   }
+   $self->_use_db($dbh, $curr_db);
+}
+
+sub _filter {
+   my ( $self, $thing, $sub, @vals ) = @_;
+   $ENV{MKDEBUG} && _d("Filtering $thing list on ", Dumper($self->{$thing}));
+   my $permit = $self->{$thing}->{permit};
+   my $reject = $self->{$thing}->{reject};
+   my $regexp = $self->{$thing}->{regexp};
+   return grep {
+      my $val = $sub->($_);
+      $val = '' unless defined $val;
+      if ( $thing eq 'tables' ) {
+         (my $tbl = $val) =~ s/^.*\.//;
+         ( !$reject || (!$reject->{$val} && !$reject->{$tbl}) )
+            && ( !$permit || $permit->{$val} || $permit->{$tbl} )
+            && ( !$regexp || $val =~ m/$regexp/ )
+      }
+      else {
+         ( !$reject || !$reject->{$val} )
+            && ( !$permit || $permit->{$val} )
+            && ( !$regexp || $val =~ m/$regexp/ )
+      }
+   } @vals;
+}
+
+sub _test_date {
+   my ( $self, $table, $prop, $test, $dbh ) = @_;
+   $prop = lc $prop;
+   if ( !defined $table->{$prop} ) {
+      $ENV{MKDEBUG} && _d("$prop is not defined");
+      return $self->{nullpass};
+   }
+   my ( $equality, $num ) = $test =~ m/^([+-])?(\d+)$/;
+   die "Invalid date test $test for $prop" unless defined $num;
+   $self->init_timestamp($dbh);
+   my $sql = "SELECT DATE_SUB('$self->{timestamp}->{$dbh}->{now}', "
+           . "INTERVAL $num SECOND)";
+   $ENV{MKDEBUG} && _d($sql);
+   ($self->{timestamp}->{$dbh}->{$num}) ||= $dbh->selectrow_array($sql);
+   my $time = $self->{timestamp}->{$dbh}->{$num};
+   return 
+         ( $equality eq '-' && $table->{$prop} gt $time )
+      || ( $equality eq '+' && $table->{$prop} lt $time )
+      || (                     $table->{$prop} eq $time );
+}
+
+sub _d {
+   my ( $line ) = (caller(0))[2];
+   print "# MySQLFind:$line $PID ", @_, "\n";
+}
+
+1;
+
+# ###########################################################################
+# End MySQLFind package
+# ###########################################################################
+
+# ###########################################################################
+# DSNParser package 2005
+# ###########################################################################
+use strict;
+use warnings FATAL => 'all';
+
+package DSNParser;
+
+use DBI;
+use Data::Dumper;
+$Data::Dumper::Indent    = 0;
+$Data::Dumper::Quotekeys = 0;
+use English qw(-no_match_vars);
+
+sub new {
+   my ( $class, @opts ) = @_;
+   my $self = {
+      opts => {
+         A => {
+            desc => 'Default character set',
+            dsn  => 'charset',
+            copy => 1,
+         },
+         D => {
+            desc => 'Database to use',
+            dsn  => 'database',
+            copy => 1,
+         },
+         F => {
+            desc => 'Only read default options from the given file',
+            dsn  => 'mysql_read_default_file',
+            copy => 1,
+         },
+         h => {
+            desc => 'Connect to host',
+            dsn  => 'host',
+            copy => 1,
+         },
+         p => {
+            desc => 'Password to use when connecting',
+            dsn  => 'password',
+            copy => 1,
+         },
+         P => {
+            desc => 'Port number to use for connection',
+            dsn  => 'port',
+            copy => 1,
+         },
+         S => {
+            desc => 'Socket file to use for connection',
+            dsn  => 'mysql_socket',
+            copy => 1,
+         },
+         u => {
+            desc => 'User for login if not current user',
+            dsn  => 'user',
+            copy => 1,
+         },
+      },
+   };
+   foreach my $opt ( @opts ) {
+      $ENV{MKDEBUG} && _d('Adding extra property ' . $opt->{key});
+      $self->{opts}->{$opt->{key}} = { desc => $opt->{desc}, copy => $opt->{copy} };
+   }
+   return bless $self, $class;
+}
+
+sub prop {
+   my ( $self, $prop, $value ) = @_;
+   if ( @_ > 2 ) {
+      $ENV{MKDEBUG} && _d("Setting $prop property");
+      $self->{$prop} = $value;
+   }
+   return $self->{$prop};
+}
+
+sub parse {
+   my ( $self, $dsn, $prev, $defaults ) = @_;
+   if ( !$dsn ) {
+      $ENV{MKDEBUG} && _d('No DSN to parse');
+      return;
+   }
+   $ENV{MKDEBUG} && _d("Parsing $dsn");
+   $prev     ||= {};
+   $defaults ||= {};
+   my %vals;
+   my %opts = %{$self->{opts}};
+   if ( $dsn !~ m/=/ && (my $p = $self->prop('autokey')) ) {
+      $ENV{MKDEBUG} && _d("Interpreting $dsn as $p=$dsn");
+      $dsn = "$p=$dsn";
+   }
+   my %hash = map { m/^(.)=(.*)$/g } split(/,/, $dsn);
+   foreach my $key ( keys %opts ) {
+      $ENV{MKDEBUG} && _d("Finding value for $key");
+      $vals{$key} = $hash{$key};
+      if ( !defined $vals{$key} && defined $prev->{$key} && $opts{$key}->{copy} ) {
+         $vals{$key} = $prev->{$key};
+         $ENV{MKDEBUG} && _d("Copying value for $key from previous DSN");
+      }
+      if ( !defined $vals{$key} ) {
+         $vals{$key} = $defaults->{$key};
+         $ENV{MKDEBUG} && _d("Copying value for $key from defaults");
+      }
+   }
+   foreach my $key ( keys %hash ) {
+      die "Unrecognized DSN part '$key' in '$dsn'\n"
+         unless exists $opts{$key};
+   }
+   if ( (my $required = $self->prop('required')) ) {
+      foreach my $key ( keys %$required ) {
+         die "Missing DSN part '$key' in '$dsn'\n" unless $vals{$key};
+      }
+   }
+   return \%vals;
+}
+
+sub as_string {
+   my ( $self, $dsn ) = @_;
+   return $dsn unless ref $dsn;
+   return join(',',
+      map  { "$_=" . ($_ eq 'p' ? '...' : $dsn->{$_}) }
+      grep { defined $dsn->{$_} && $self->{opts}->{$_} }
+      sort keys %$dsn );
+}
+
+sub usage {
+   my ( $self ) = @_;
+   my $usage
+      = "DSN syntax is key=value[,key=value...]  Allowable DSN keys:\n"
+      . "  KEY  COPY  MEANING\n"
+      . "  ===  ====  =============================================\n";
+   my %opts = %{$self->{opts}};
+   foreach my $key ( sort keys %opts ) {
+      $usage .= "  $key    "
+             .  ($opts{$key}->{copy} ? 'yes   ' : 'no    ')
+             .  ($opts{$key}->{desc} || '[No description]')
+             . "\n";
+   }
+   if ( (my $key = $self->prop('autokey')) ) {
+      $usage .= "  If the DSN is a bareword, the word is treated as the '$key' key.\n";
+   }
+   return $usage;
+}
+
+sub get_cxn_params {
+   my ( $self, $info ) = @_;
+   my $dsn;
+   my %opts = %{$self->{opts}};
+   my $driver = $self->prop('dbidriver') || '';
+   if ( $driver eq 'Pg' ) {
+      $dsn = 'DBI:Pg:dbname=' . ( $info->{D} || '' ) . ';'
+         . join(';', map  { "$opts{$_}->{dsn}=$info->{$_}" }
+                     grep { defined $info->{$_} }
+                     qw(h P));
+   }
+   else {
+      $dsn = 'DBI:mysql:' . ( $info->{D} || '' ) . ';'
+         . join(';', map  { "$opts{$_}->{dsn}=$info->{$_}" }
+                     grep { defined $info->{$_} }
+                     qw(F h P S A))
+         . ';mysql_read_default_group=mysql';
+   }
+   $ENV{MKDEBUG} && _d($dsn);
+   return ($dsn, $info->{u}, $info->{p});
+}
+
+sub fill_in_dsn {
+   my ( $self, $dbh, $dsn ) = @_;
+   my $vars = $dbh->selectall_hashref('SHOW VARIABLES', 'Variable_name');
+   my ($user, $db) = $dbh->selectrow_array('SELECT USER(), DATABASE()');
+   $user =~ s/@.*//;
+   $dsn->{h} ||= $vars->{hostname}->{Value};
+   $dsn->{S} ||= $vars->{'socket'}->{Value};
+   $dsn->{P} ||= $vars->{port}->{Value};
+   $dsn->{u} ||= $user;
+   $dsn->{D} ||= $db;
+}
+
+sub get_dbh {
+   my ( $self, $cxn_string, $user, $pass, $opts ) = @_;
+   $opts ||= {};
+   my $defaults = {
+      AutoCommit        => 0,
+      RaiseError        => 1,
+      PrintError        => 0,
+      mysql_enable_utf8 => ($cxn_string =~ m/charset=utf8/ ? 1 : 0),
+   };
+   @{$defaults}{ keys %$opts } = values %$opts;
+   $ENV{MKDEBUG} && _d($cxn_string, ' ', $user, ' ', $pass, ' {',
+      join(', ', map { "$_=>$defaults->{$_}" } keys %$defaults ), '}');
+   my $dbh = DBI->connect($cxn_string, $user, $pass, $defaults);
+   if ( my ($charset) = $cxn_string =~ m/charset=(\w+)/ ) {
+      my $sql = "/*!40101 SET NAMES $charset*/";
+      $ENV{MKDEBUG} && _d("$dbh: $sql");
+      $dbh->do($sql);
+      $ENV{MKDEBUG} && _d('Enabling charset for STDOUT');
+      if ( $charset eq 'utf8' ) {
+         binmode(STDOUT, ':utf8')
+            or die "Can't binmode(STDOUT, ':utf8'): $OS_ERROR";
+      }
+      else {
+         binmode(STDOUT) or die "Can't binmode(STDOUT): $OS_ERROR";
+      }
+   }
+   my $setvars = $self->prop('setvars');
+   if ( $cxn_string =~ m/mysql/i && $setvars ) {
+      my $sql = "SET $setvars";
+      $ENV{MKDEBUG} && _d("$dbh: $sql");
+      $dbh->do($sql);
+   }
+   $ENV{MKDEBUG} && _d('DBH info: ',
+      $dbh,
+      Dumper($dbh->selectrow_hashref(
+         'SELECT DATABASE(), CONNECTION_ID(), VERSION()/*!50038 , @@hostname*/')),
+      ' Connection info: ', ($dbh->{mysql_hostinfo} || 'undef'),
+      ' Character set info: ',
+      Dumper($dbh->selectall_arrayref(
+         'SHOW VARIABLES LIKE "character_set%"', { Slice => {}})),
+      ' $DBD::mysql::VERSION: ', $DBD::mysql::VERSION,
+      ' $DBI::VERSION: ', $DBI::VERSION,
+   );
+   return $dbh;
+}
+
+sub get_hostname {
+   my ( $self, $dbh ) = @_;
+   if ( my ($host) = ($dbh->{mysql_hostinfo} || '') =~ m/^(\w+) via/ ) {
+      return $host;
+   }
+   my ( $hostname, $one ) = $dbh->selectrow_array(
+      'SELECT /*!50038 @@hostname, */ 1');
+   return $hostname;
+}
+
+sub disconnect {
+   my ( $self, $dbh ) = @_;
+   $ENV{MKDEBUG} && $self->print_active_handles($dbh);
+   $dbh->disconnect;
+}
+
+sub print_active_handles {
+   my ( $self, $thing, $level ) = @_;
+   $level ||= 0;
+   printf("# Active %sh: %s %s %s\n", ($thing->{Type} || 'undef'), "\t" x $level,
+      $thing, (($thing->{Type} || '') eq 'st' ? $thing->{Statement} || '' : ''))
+      or die "Cannot print: $OS_ERROR";
+   foreach my $handle ( grep {defined} @{ $thing->{ChildHandles} } ) {
+      $self->print_active_handles->( $handle, $level + 1 );
+   }
+}
+
+sub _d {
+   my ( $line ) = (caller(0))[2];
+   @_ = map { defined $_ ? $_ : 'undef' } @_;
+   print "# DSNParser:$line $PID ", @_, "\n";
+}
+
+1;
+
+# ###########################################################################
+# End DSNParser package
+# ###########################################################################
+
+# ###########################################################################
+# OptionParser package 1967
+# ###########################################################################
+use strict;
+use warnings FATAL => 'all';
+
+package OptionParser;
+
+use Getopt::Long;
+use List::Util qw(max);
+use English qw(-no_match_vars);
+
+sub new {
+   my ( $class, @opts ) = @_;
+   my %key_seen;
+   my %long_seen;
+   my %key_for;
+   my %defaults;
+   my @mutex;
+   my @atleast1;
+   my %long_for;
+   my %disables;
+   my %copyfrom;
+   unshift @opts,
+      { s => 'help',    d => 'Show this help message' },
+      { s => 'version', d => 'Output version information and exit' };
+   foreach my $opt ( @opts ) {
+      if ( ref $opt ) {
+         my ( $long, $short ) = $opt->{s} =~ m/^([\w-]+)(?:\|([^!+=]*))?/;
+         $opt->{k} = $short || $long;
+         $key_for{$long} = $opt->{k};
+         $long_for{$opt->{k}} = $long;
+         $long_for{$long} = $long;
+         $opt->{l} = $long;
+         die "Duplicate option $opt->{k}" if $key_seen{$opt->{k}}++;
+         die "Duplicate long option $opt->{l}" if $long_seen{$opt->{l}}++;
+         $opt->{t} = $short;
+         $opt->{n} = $opt->{s} =~ m/!/;
+         $opt->{g} ||= 'o';
+         if ( (my ($y) = $opt->{s} =~ m/=([mdHhAaz])/) ) {
+            $ENV{MKDEBUG} && _d("Option $opt->{k} type: $y");
+            $opt->{y} = $y;
+            $opt->{s} =~ s/=./=s/;
+         }
+         if ( $opt->{d} =~ m/required/ ) {
+            $opt->{r} = 1;
+            $ENV{MKDEBUG} && _d("Option $opt->{k} is required");
+         }
+         if ( (my ($def) = $opt->{d} =~ m/default\b(?: ([^)]+))?/) ) {
+            $defaults{$opt->{k}} = defined $def ? $def : 1;
+            $ENV{MKDEBUG} && _d("Option $opt->{k} has a default");
+         }
+         if ( (my ($dis) = $opt->{d} =~ m/(disables .*)/) ) {
+            $disables{$opt->{k}} = [ $class->get_participants($dis) ];
+            $ENV{MKDEBUG} && _d("Option $opt->{k} $dis");
+         }
+      }
+      else { # It's an instruction.
+
+         if ( $opt =~ m/at least one|mutually exclusive|one and only one/ ) {
+            my @participants = map {
+                  die "No such option '$_' in $opt" unless $long_for{$_};
+                  $long_for{$_};
+               } $class->get_participants($opt);
+            if ( $opt =~ m/mutually exclusive|one and only one/ ) {
+               push @mutex, \@participants;
+               $ENV{MKDEBUG} && _d(@participants, ' are mutually exclusive');
+            }
+            if ( $opt =~ m/at least one|one and only one/ ) {
+               push @atleast1, \@participants;
+               $ENV{MKDEBUG} && _d(@participants, ' require at least one');
+            }
+         }
+         elsif ( $opt =~ m/default to/ ) {
+            my @participants = map {
+                  die "No such option '$_' in $opt" unless $long_for{$_};
+                  $key_for{$_};
+               } $class->get_participants($opt);
+            $copyfrom{$participants[0]} = $participants[1];
+            $ENV{MKDEBUG} && _d(@participants, ' copy from each other');
+         }
+
+      }
+   }
+
+   if ( $ENV{MKDEBUG} ) {
+      my $text = do {
+         local $RS = undef;
+         open my $fh, "<", $PROGRAM_NAME
+            or die "Can't open $PROGRAM_NAME: $OS_ERROR";
+         <$fh>;
+      };
+      my %used = map { $_ => 1 } $text =~ m/\$opts\{'?([\w-]+)'?\}/g;
+      my @unused;
+      my @undefined;
+      my %option_exists;
+      foreach my $opt ( @opts ) {
+         next unless ref $opt;
+         my $key = $opt->{k};
+         $option_exists{$key}++;
+         next if $opt->{l} =~ m/^(?:help|version|defaults-file|database|charset
+                                    |password|port|socket|user|host)$/x
+              || $disables{$key};
+         push @unused, $key unless $used{$key};
+      }
+      foreach my $key ( keys %used ) {
+         push @undefined, $key unless $option_exists{$key};
+      }
+      if ( @unused || @undefined ) {
+         die "The following command-line options are unused: "
+            . join(',', @unused)
+            . ' The following are undefined: '
+            . join(',', @undefined);
+      }
+   }
+
+   foreach my $dis ( keys %disables ) {
+      $disables{$dis} = [ map {
+            die "No such option '$_' while processing $dis" unless $long_for{$_};
+            $long_for{$_};
+         } @{$disables{$dis}} ];
+   }
+
+   return bless {
+      specs => [ grep { ref $_ } @opts ],
+      notes => [],
+      instr => [ grep { !ref $_ } @opts ],
+      mutex => \@mutex,
+      defaults => \%defaults,
+      long_for => \%long_for,
+      atleast1 => \@atleast1,
+      disables => \%disables,
+      key_for  => \%key_for,
+      copyfrom => \%copyfrom,
+      strict   => 1,
+      groups   => [ { k => 'o', d => 'Options' } ],
+   }, $class;
+}
+
+sub get_participants {
+   my ( $self, $str ) = @_;
+   my @participants;
+   foreach my $thing ( $str =~ m/(--?[\w-]+)/g ) {
+      if ( (my ($long) = $thing =~ m/--(.+)/) ) {
+         push @participants, $long;
+      }
+      else {
+         foreach my $short ( $thing =~ m/([^-])/g ) {
+            push @participants, $short;
+         }
+      }
+   }
+   $ENV{MKDEBUG} && _d("Participants for $str: ", @participants);
+   return @participants;
+}
+
+sub parse {
+   my ( $self, %defaults ) = @_;
+   my @specs = @{$self->{specs}};
+   my %factor_for = (k => 1_024, M => 1_048_576, G => 1_073_741_824);
+
+   my %opt_seen;
+   my %vals = %{$self->{defaults}};
+   @vals{keys %defaults} = values %defaults;
+   foreach my $spec ( @specs ) {
+      $vals{$spec->{k}} = undef unless defined $vals{$spec->{k}};
+      $opt_seen{$spec->{k}} = 1;
+   }
+
+   foreach my $key ( keys %defaults ) {
+      die "Cannot set default for non-existent option '$key'\n"
+         unless $opt_seen{$key};
+   }
+
+   Getopt::Long::Configure('no_ignore_case', 'bundling');
+   GetOptions( map { $_->{s} => \$vals{$_->{k}} } @specs )
+      or $self->error('Error parsing options');
+
+   if ( $vals{version} ) {
+      my $prog = $self->prog;
+      printf("%s  Ver %s Distrib %s Changeset %s\n",
+         $prog, $main::VERSION, $main::DISTRIB, $main::SVN_REV)
+         or die "Cannot print: $OS_ERROR";
+      exit(0);
+   }
+
+   if ( @ARGV && $self->{strict} ) {
+      $self->error("Unrecognized command-line options @ARGV");
+   }
+
+   foreach my $dis ( grep { defined $vals{$_} } keys %{$self->{disables}} ) {
+      my @disses = map { $self->{key_for}->{$_} } @{$self->{disables}->{$dis}};
+      $ENV{MKDEBUG} && _d("Unsetting options: ", @disses);
+      @vals{@disses} = map { undef } @disses;
+   }
+
+   foreach my $spec ( grep { $_->{r} } @specs ) {
+      if ( !defined $vals{$spec->{k}} ) {
+         $self->error("Required option --$spec->{l} must be specified");
+      }
+   }
+
+   foreach my $mutex ( @{$self->{mutex}} ) {
+      my @set = grep { defined $vals{$self->{key_for}->{$_}} } @$mutex;
+      if ( @set > 1 ) {
+         my $note = join(', ',
+            map { "--$self->{long_for}->{$_}" }
+                @{$mutex}[ 0 .. scalar(@$mutex) - 2] );
+         $note .= " and --$self->{long_for}->{$mutex->[-1]}"
+               . " are mutually exclusive.";
+         $self->error($note);
+      }
+   }
+
+   foreach my $required ( @{$self->{atleast1}} ) {
+      my @set = grep { defined $vals{$self->{key_for}->{$_}} } @$required;
+      if ( !@set ) {
+         my $note = join(', ',
+            map { "--$self->{long_for}->{$_}" }
+                @{$required}[ 0 .. scalar(@$required) - 2] );
+         $note .= " or --$self->{long_for}->{$required->[-1]}";
+         $self->error("Specify at least one of $note");
+      }
+   }
+
+   foreach my $spec ( grep { $_->{y} && defined $vals{$_->{k}} } @specs ) {
+      my $val = $vals{$spec->{k}};
+      if ( $spec->{y} eq 'm' ) {
+         my ( $num, $suffix ) = $val =~ m/(\d+)([a-z])?$/;
+         if ( !$suffix ) {
+            my ( $s ) = $spec->{d} =~ m/\(suffix (.)\)/;
+            $suffix = $s || 's';
+            $ENV{MKDEBUG} && _d("No suffix given; using $suffix for $spec->{k} "
+               . "(value: '$val')");
+         }
+         if ( $suffix =~ m/[smhd]/ ) {
+            $val = $suffix eq 's' ? $num            # Seconds
+                 : $suffix eq 'm' ? $num * 60       # Minutes
+                 : $suffix eq 'h' ? $num * 3600     # Hours
+                 :                  $num * 86400;   # Days
+            $vals{$spec->{k}} = $val;
+            $ENV{MKDEBUG} && _d("Setting option $spec->{k} to $val");
+         }
+         else {
+            $self->error("Invalid --$spec->{l} argument");
+         }
+      }
+      elsif ( $spec->{y} eq 'd' ) {
+         $ENV{MKDEBUG} && _d("Parsing option $spec->{y} as a DSN");
+         my $from_key = $self->{copyfrom}->{$spec->{k}};
+         my $default = {};
+         if ( $from_key ) {
+            $ENV{MKDEBUG} && _d("Option $spec->{y} DSN copies from option $from_key");
+            $default = $self->{dsn}->parse($self->{dsn}->as_string($vals{$from_key}));
+         }
+         $vals{$spec->{k}} = $self->{dsn}->parse($val, $default);
+      }
+      elsif ( $spec->{y} eq 'z' ) {
+         my ($pre, $num, $factor) = $val =~ m/^([+-])?(\d+)([kMG])?$/;
+         if ( defined $num ) {
+            if ( $factor ) {
+               $num *= $factor_for{$factor};
+               $ENV{MKDEBUG} && _d("Setting option $spec->{y} to num * factor");
+            }
+            $vals{$spec->{k}} = ($pre || '') . $num;
+         }
+         else {
+            $self->error("Invalid --$spec->{l} argument");
+         }
+      }
+   }
+
+   foreach my $spec ( grep { $_->{y} } @specs ) {
+      $ENV{MKDEBUG} && _d("Treating option $spec->{k} as a list");
+      my $val = $vals{$spec->{k}};
+      if ( $spec->{y} eq 'H' || (defined $val && $spec->{y} eq 'h') ) {
+         $vals{$spec->{k}} = { map { $_ => 1 } split(',', ($val || '')) };
+      }
+      elsif ( $spec->{y} eq 'A' || (defined $val && $spec->{y} eq 'a') ) {
+         $vals{$spec->{k}} = [ split(',', ($val || '')) ];
+      }
+   }
+
+   return %vals;
+}
+
+sub error {
+   my ( $self, $note ) = @_;
+   $self->{__error__} = 1;
+   push @{$self->{notes}}, $note;
+}
+
+sub prog {
+   (my $prog) = $PROGRAM_NAME =~ m/([.A-Za-z-]+)$/;
+   return $prog || $PROGRAM_NAME;
+}
+
+sub prompt {
+   my ( $self ) = @_;
+   my $prog   = $self->prog;
+   my $prompt = $self->{prompt} || '<options>';
+   return "Usage: $prog $prompt\n";
+}
+
+sub descr {
+   my ( $self ) = @_;
+   my $prog = $self->prog;
+   my $descr  = $prog . ' ' . ($self->{descr} || '')
+          . "  For more details, please use the --help option, "
+          . "or try 'perldoc $prog' for complete documentation.";
+   $descr = join("\n", $descr =~ m/(.{0,80})(?:\s+|$)/g);
+   $descr =~ s/ +$//mg;
+   return $descr;
+}
+
+sub usage_or_errors {
+   my ( $self, %opts ) = @_;
+   if ( $opts{help} ) {
+      print $self->usage(%opts)
+         or die "Cannot print: $OS_ERROR";
+      exit(0);
+   }
+   elsif ( $self->{__error__} ) {
+      print $self->errors()
+         or die "Cannot print: $OS_ERROR";
+      exit(0);
+   }
+}
+
+sub errors {
+   my ( $self ) = @_;
+   my $usage = $self->prompt() . "\n";
+   if ( (my @notes = @{$self->{notes}}) ) {
+      $usage .= join("\n  * ", 'Errors in command-line arguments:', @notes) . "\n";
+   }
+   return $usage . "\n" . $self->descr();
+}
+
+sub usage {
+   my ( $self, %vals ) = @_;
+   my @specs = @{$self->{specs}};
+
+   my $maxl = max(map { length($_->{l}) + ($_->{n} ? 4 : 0)} @specs);
+
+   my $maxs = max(0,
+      map { length($_->{l}) + ($_->{n} ? 4 : 0)}
+      grep { $_->{t} } @specs);
+
+   my $lcol = max($maxl, ($maxs + 3));
+   my $rcol = 80 - $lcol - 6;
+   my $rpad = ' ' x ( 80 - $rcol );
+
+   $maxs = max($lcol - 3, $maxs);
+
+   my $usage = $self->descr() . "\n" . $self->prompt();
+   foreach my $g ( @{$self->{groups}} ) {
+      $usage .= "\n$g->{d}:\n";
+      foreach my $spec (
+         sort { $a->{l} cmp $b->{l} } grep { $_->{g} eq $g->{k} } @specs )
+      {
+         my $long  = $spec->{n} ? "[no]$spec->{l}" : $spec->{l};
+         my $short = $spec->{t};
+         my $desc  = $spec->{d};
+         if ( $spec->{y} && $spec->{y} eq 'm' ) {
+            my ($s) = $desc =~ m/\(suffix (.)\)/;
+            $s    ||= 's';
+            $desc =~ s/\s+\(suffix .\)//;
+            $desc .= ".  Optional suffix s=seconds, m=minutes, h=hours, "
+                   . "d=days; if no suffix, $s is used.";
+         }
+         $desc = join("\n$rpad", grep { $_ } $desc =~ m/(.{0,$rcol})(?:\s+|$)/g);
+         $desc =~ s/ +$//mg;
+         if ( $short ) {
+            $usage .= sprintf("  --%-${maxs}s -%s  %s\n", $long, $short, $desc);
+         }
+         else {
+            $usage .= sprintf("  --%-${lcol}s  %s\n", $long, $desc);
+         }
+      }
+   }
+
+   if ( (my @instr = @{$self->{instr}}) ) {
+      $usage .= join("\n", map { "  $_" } @instr) . "\n";
+   }
+   if ( $self->{dsn} ) {
+      $usage .= "\n" . $self->{dsn}->usage();
+   }
+   $usage .= "\nOptions and values after processing arguments:\n";
+   foreach my $spec ( sort { $a->{l} cmp $b->{l} } @specs ) {
+      my $val   = $vals{$spec->{k}};
+      my $type  = $spec->{y} || '';
+      my $bool  = $spec->{s} =~ m/^[\w-]+(?:\|[\w-])?!?$/;
+      $val      = $bool                     ? ( $val ? 'TRUE' : 'FALSE' )
+                : !defined $val             ? '(No value)'
+                : $type eq 'd'              ? $self->{dsn}->as_string($val)
+                : $type =~ m/H|h/           ? join(',', sort keys %$val)
+                : $type =~ m/A|a/           ? join(',', @$val)
+                :                             $val;
+      $usage .= sprintf("  --%-${lcol}s  %s\n", $spec->{l}, $val);
+   }
+   return $usage;
+}
+
+sub pod_to_spec {
+   my ( $self, $file ) = @_;
+
+   my %types = (
+      'time' => 'm',
+      'int'  => 'i',
+      string => 's',
+      hash   => 'h',
+      Hash   => 'H',
+      array  => 'a',
+      Array  => 'A',
+      size   => 'z',
+      DSN    => 'd',
+      float  => 'f',
+   );
+
+   my @spec = ();
+   my @special_options = ();
+   $file ||= __FILE__;
+   open my $fh, "<", $file or die "Can't open $file: $OS_ERROR";
+   my $para;
+
+   local $INPUT_RECORD_SEPARATOR = '';
+   while ( $para = <$fh> ) {
+      next unless $para =~ m/^=head1 OPTIONS/;
+      last;
+   }
+
+   while ( $para = <$fh> ) {
+      $ENV{MKDEBUG} && _d($para);
+      last if $para =~ m/^=over/;
+      chomp $para;
+      $para =~ s/\s+/ /g;
+      $para =~ s/[LC]<"?([^">]+)"?>/$1/g;
+      push @special_options, $para;
+   }
+
+   do {
+      if ( my ($option) = $para =~ m/^=item --(.*)/ ) {
+         $ENV{MKDEBUG} && _d($para);
+         my %props;
+         $para = <$fh>;
+         if ( $para =~ m/: / ) {
+            $para =~ s/\s+\Z//g;
+            %props = map { split(/: /, $_) } split(/; /, $para);
+            if ( $props{'short form'} ) {
+               $props{'short form'} =~ s/-//;
+            }
+            $para = <$fh>;
+         }
+         $para =~ s/\s+\Z//g;
+         $para =~ s/\s+/ /g;
+         $para =~ s/[LC]<"?([^">]+)"?>/$1/g;
+         if ( $para =~ m/^[^.]+\.$/ ) {
+            $para =~ s/\.$//;
+         }
+         push @spec, {
+            s => $option
+               . ( $props{'short form'} ? '|' . $props{'short form'} : '' )
+               . ( $props{'negatable'}  ? '!'                        : '' )
+               . ( $props{'cumulative'} ? '+'                        : '' )
+               . ( $props{type}         ? '=' . $types{$props{type}} : '' ),
+            d => $para
+               . (defined $props{default} ? " (default $props{default})" : ''),
+         };
+      }
+      while ( $para = <$fh> ) {
+         last unless $para;
+         if ( $para =~ m/^=head1/ ) {
+            $para = undef; # Can't 'last' out of a do {} block.
+            last;
+         }
+         last if $para =~ m/^=item --/;
+      }
+   } while ( $para );
+
+   close $fh;
+   return @spec, @special_options;
+}
+
+sub prompt_noecho {
+   shift @_ if ref $_[0] eq __PACKAGE__;
+   my ( $prompt ) = @_;
+   local $OUTPUT_AUTOFLUSH = 1;
+   print $prompt
+      or die "Cannot print: $OS_ERROR";
+   my $response;
+   eval {
+      require Term::ReadKey;
+      Term::ReadKey::ReadMode('noecho');
+      chomp($response = <STDIN>);
+      Term::ReadKey::ReadMode('normal');
+      print "\n"
+         or die "Cannot print: $OS_ERROR";
+   };
+   if ( $EVAL_ERROR ) {
+      die "Cannot read response; is Term::ReadKey installed? $EVAL_ERROR";
+   }
+   return $response;
+}
+
+sub groups {
+   my ( $self, @groups ) = @_;
+   push @{$self->{groups}}, @groups;
+}
+
+sub _d {
+   my ( $line ) = (caller(0))[2];
+   print "# OptionParser:$line $PID ", @_, "\n";
+}
+
+if ( $ENV{MKDEBUG} ) {
+   print '# ', $^X, ' ', $], "\n";
+   my $uname = `uname -a`;
+   if ( $uname ) {
+      $uname =~ s/\s+/ /g;
+      print "# $uname\n";
+   }
+   printf("# %s  Ver %s Distrib %s Changeset %s line %d\n",
+      $PROGRAM_NAME, ($main::VERSION || ''), ($main::DISTRIB || ''),
+      ($main::SVN_REV || ''), __LINE__);
+   print('# Arguments: ',
+      join(' ', map { my $a = "_[$_]_"; $a =~ s/\n/\n# /g; $a; } @ARGV), "\n");
+}
+
+1;
+
+# ###########################################################################
+# End OptionParser package
+# ###########################################################################
+
+# ###########################################################################
+# TableParser package 2108
+# ###########################################################################
+use strict;
+use warnings FATAL => 'all';
+
+package TableParser;
+
+use English qw(-no_match_vars);
+
+sub new {
+   bless {}, shift;
+}
+
+sub parse {
+   my ( $self, $ddl, $opts ) = @_;
+
+   if ( ref $ddl eq 'ARRAY' ) {
+      if ( lc $ddl->[0] eq 'table' ) {
+         $ddl = $ddl->[1];
+      }
+      else {
+         return {
+            engine => 'VIEW',
+         };
+      }
+   }
+
+   if ( $ddl !~ m/CREATE (?:TEMPORARY )?TABLE `/ ) {
+      die "Cannot parse table definition; is ANSI quoting "
+         . "enabled or SQL_QUOTE_SHOW_CREATE disabled?";
+   }
+
+   $ddl =~ s/(`[^`]+`)/\L$1/g;
+
+   my ( $engine ) = $ddl =~ m/\).*?(?:ENGINE|TYPE)=(\w+)/;
+   $ENV{MKDEBUG} && _d('Storage engine: ', $engine);
+
+   my @defs = $ddl =~ m/^(\s+`.*?),?$/gm;
+   my @cols = map { $_ =~ m/`([^`]+)`/g } @defs;
+   $ENV{MKDEBUG} && _d('Columns: ' . join(', ', @cols));
+
+   my %def_for;
+   @def_for{@cols} = @defs;
+
+   my (@nums, @null);
+   my (%type_for, %is_nullable, %is_numeric, %is_autoinc);
+   foreach my $col ( @cols ) {
+      my $def = $def_for{$col};
+      my ( $type ) = $def =~ m/`[^`]+`\s([a-z]+)/;
+      die "Can't determine column type for $def" unless $type;
+      $type_for{$col} = $type;
+      if ( $type =~ m/(?:(?:tiny|big|medium|small)?int|float|double|decimal|year)/ ) {
+         push @nums, $col;
+         $is_numeric{$col} = 1;
+      }
+      if ( $def !~ m/NOT NULL/ ) {
+         push @null, $col;
+         $is_nullable{$col} = 1;
+      }
+      $is_autoinc{$col} = $def =~ m/AUTO_INCREMENT/i ? 1 : 0;
+   }
+
+   my %keys;
+   foreach my $key ( $ddl =~ m/^  ((?:[A-Z]+ )?KEY .*)$/gm ) {
+
+      if ( $engine !~ m/MEMORY|HEAP/ ) {
+         $key =~ s/USING HASH/USING BTREE/;
+      }
+
+      my ( $type, $cols ) = $key =~ m/(?:USING (\w+))? \((.+)\)/;
+      my ( $special ) = $key =~ m/(FULLTEXT|SPATIAL)/;
+      $type = $type || $special || 'BTREE';
+      if ( $opts->{mysql_version} && $opts->{mysql_version} lt '004001000'
+         && $engine =~ m/HEAP|MEMORY/i )
+      {
+         $type = 'HASH'; # MySQL pre-4.1 supports only HASH indexes on HEAP
+      }
+
+      my ($name) = $key =~ m/(PRIMARY|`[^`]*`)/;
+      my $unique = $key =~ m/PRIMARY|UNIQUE/ ? 1 : 0;
+      my @cols;
+      my @col_prefixes;
+      foreach my $col_def ( split(',', $cols) ) {
+         my ($name, $prefix) = $col_def =~ m/`(\w+)`(?:\((\d+)\))?/;
+         push @cols, $name;
+         push @col_prefixes, $prefix;
+      }
+      $name =~ s/`//g;
+      $ENV{MKDEBUG} && _d("Index $name columns: " . join(', ', @cols));
+
+      $keys{$name} = {
+         colnames     => $cols,
+         cols         => \@cols,
+         col_prefixes => \@col_prefixes,
+         unique       => $unique,
+         is_col       => { map { $_ => 1 } @cols },
+         is_nullable  => scalar(grep { $is_nullable{$_} } @cols),
+         type         => $type,
+         name         => $name,
+      };
+   }
+
+   return {
+      cols           => \@cols,
+      col_posn       => { map { $cols[$_] => $_ } 0..$#cols },
+      is_col         => { map { $_ => 1 } @cols },
+      null_cols      => \@null,
+      is_nullable    => \%is_nullable,
+      is_autoinc     => \%is_autoinc,
+      keys           => \%keys,
+      defs           => \%def_for,
+      numeric_cols   => \@nums,
+      is_numeric     => \%is_numeric,
+      engine         => $engine,
+      type_for       => \%type_for,
+   };
+}
+
+sub sort_indexes {
+   my ( $self, $tbl ) = @_;
+   my @indexes
+      = sort {
+         (($a ne 'PRIMARY') <=> ($b ne 'PRIMARY'))
+         || ( !$tbl->{keys}->{$a}->{unique} <=> !$tbl->{keys}->{$b}->{unique} )
+         || ( $tbl->{keys}->{$a}->{is_nullable} <=> $tbl->{keys}->{$b}->{is_nullable} )
+         || ( scalar(@{$tbl->{keys}->{$a}->{cols}}) <=> scalar(@{$tbl->{keys}->{$b}->{cols}}) )
+      }
+      grep {
+         $tbl->{keys}->{$_}->{type} eq 'BTREE'
+      }
+      sort keys %{$tbl->{keys}};
+   $ENV{MKDEBUG} && _d('Indexes sorted best-first: ' . join(', ', @indexes));
+   return @indexes;
+}
+
+sub find_best_index {
+   my ( $self, $tbl, $index ) = @_;
+   my $best;
+   if ( $index ) {
+      ($best) = grep { uc $_ eq uc $index } keys %{$tbl->{keys}};
+   }
+   if ( !$best ) {
+      if ( $index ) {
+         die "Index '$index' does not exist in table";
+      }
+      else {
+         ($best) = $self->sort_indexes($tbl);
+      }
+   }
+   $ENV{MKDEBUG} && _d("Best index found is " . ($best || 'undef'));
+   return $best;
+}
+
+sub find_possible_keys {
+   my ( $self, $dbh, $database, $table, $quoter, $where ) = @_;
+   return () unless $where;
+   my $sql = 'EXPLAIN SELECT * FROM ' . $quoter->quote($database, $table)
+      . ' WHERE ' . $where;
+   $ENV{MKDEBUG} && _d($sql);
+   my $expl = $dbh->selectrow_hashref($sql);
+   $expl = { map { lc($_) => $expl->{$_} } keys %$expl };
+   if ( $expl->{possible_keys} ) {
+      $ENV{MKDEBUG} && _d("possible_keys=$expl->{possible_keys}");
+      my @candidates = split(',', $expl->{possible_keys});
+      my %possible   = map { $_ => 1 } @candidates;
+      if ( $expl->{key} ) {
+         $ENV{MKDEBUG} && _d("MySQL chose $expl->{key}");
+         unshift @candidates, grep { $possible{$_} } split(',', $expl->{key});
+         $ENV{MKDEBUG} && _d('Before deduping: ' . join(', ', @candidates));
+         my %seen;
+         @candidates = grep { !$seen{$_}++ } @candidates;
+      }
+      $ENV{MKDEBUG} && _d('Final list: ' . join(', ', @candidates));
+      return @candidates;
+   }
+   else {
+      $ENV{MKDEBUG} && _d('No keys in possible_keys');
+      return ();
+   }
+}
+
+sub _d {
+   my ( $line ) = (caller(0))[2];
+   print "# TableParser:$line $PID ", @_, "\n";
+}
+
+1;
+
+# ###########################################################################
+# End TableParser package
+# ###########################################################################
+
+# ###########################################################################
+# VersionParser package 1755
+# ###########################################################################
+use strict;
+use warnings FATAL => 'all';
+
+package VersionParser;
+
+use English qw(-no_match_vars);
+
+sub new {
+   my ( $class ) = @_;
+   bless {}, $class;
+}
+
+sub parse {
+   my ( $self, $str ) = @_;
+   my $result = sprintf('%03d%03d%03d', $str =~ m/(\d+)/g);
+   $ENV{MKDEBUG} && _d("$str parses to $result");
+   return $result;
+}
+
+sub version_ge {
+   my ( $self, $dbh, $target ) = @_;
+   if ( !$self->{$dbh} ) {
+      $self->{$dbh} = $self->parse(
+         $dbh->selectrow_array('SELECT VERSION()'));
+   }
+   my $result = $self->{$dbh} ge $self->parse($target) ? 1 : 0;
+   $ENV{MKDEBUG} && _d("$self->{$dbh} ge $target: $result");
+   return $result;
+}
+
+sub _d {
+   my ( $line ) = (caller(0))[2];
+   print "# VersionParser:$line $PID ", @_, "\n";
+}
+
+1;
+
+# ###########################################################################
+# End VersionParser package
+# ###########################################################################
+
+# ###########################################################################
+# MySQLDump package 2031
+# ###########################################################################
+use strict;
+use warnings FATAL => 'all';
+
+package MySQLDump;
+
+use English qw(-no_match_vars);
+
+( our $before = <<'EOF') =~ s/^   //gm;
+   /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
+   /*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
+   /*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
+   /*!40101 SET NAMES utf8 */;
+   /*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;
+   /*!40103 SET TIME_ZONE='+00:00' */;
+   /*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;
+   /*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;
+   /*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;
+   /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
+EOF
+
+( our $after = <<'EOF') =~ s/^   //gm;
+   /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
+   /*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
+   /*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;
+   /*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
+   /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
+   /*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
+   /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
+   /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
+EOF
+
+sub new {
+   my ( $class, %args ) = @_;
+   $args{cache} = 1 unless defined $args{cache};
+   my $self = bless \%args, $class;
+   return $self;
+}
+
+sub dump {
+   my ( $self, $dbh, $quoter, $db, $tbl, $what ) = @_;
+
+   if ( $what eq 'table' ) {
+      my $ddl = $self->get_create_table($dbh, $quoter, $db, $tbl);
+      if ( $ddl->[0] eq 'table' ) {
+         return $before
+            . 'DROP TABLE IF EXISTS ' . $quoter->quote($tbl) . ";\n"
+            . $ddl->[1] . ";\n";
+      }
+      else {
+         return 'DROP TABLE IF EXISTS ' . $quoter->quote($tbl) . ";\n"
+            . '/*!50001 DROP VIEW IF EXISTS '
+            . $quoter->quote($tbl) . "*/;\n/*!50001 "
+            . $self->get_tmp_table($dbh, $quoter, $db, $tbl) . "*/;\n";
+      }
+   }
+   elsif ( $what eq 'triggers' ) {
+      my $trgs = $self->get_triggers($dbh, $quoter, $db, $tbl);
+      if ( $trgs && @$trgs ) {
+         my $result = $before . "\nDELIMITER ;;\n";
+         foreach my $trg ( @$trgs ) {
+            if ( $trg->{sql_mode} ) {
+               $result .= "/*!50003 SET SESSION SQL_MODE=\"$trg->{sql_mode}\" */;;\n";
+            }
+            $result .= "/*!50003 CREATE */ ";
+            if ( $trg->{definer} ) {
+               my ( $user, $host )
+                  = map { s/'/''/g; "'$_'"; }
+                    split('@', $trg->{definer}, 2);
+               $result .= "/*!50017 DEFINER=$user\@$host */ ";
+            }
+            $result .= sprintf("/*!50003 TRIGGER %s %s %s ON %s\nFOR EACH ROW %s */;;\n\n",
+               $quoter->quote($trg->{trigger}),
+               @{$trg}{qw(timing event)},
+               $quoter->quote($trg->{table}),
+               $trg->{statement});
+         }
+         $result .= "DELIMITER ;\n\n/*!50003 SET SESSION SQL_MODE=\@OLD_SQL_MODE */;\n\n";
+         return $result;
+      }
+      else {
+         return undef;
+      }
+   }
+   elsif ( $what eq 'view' ) {
+      my $ddl = $self->get_create_table($dbh, $quoter, $db, $tbl);
+      return '/*!50001 DROP TABLE IF EXISTS ' . $quoter->quote($tbl) . "*/;\n"
+         . '/*!50001 DROP VIEW IF EXISTS ' . $quoter->quote($tbl) . "*/;\n"
+         . '/*!50001 ' . $ddl->[1] . "*/;\n";
+   }
+   else {
+      die "You didn't say what to dump.";
+   }
+}
+
+sub _use_db {
+   my ( $self, $dbh, $quoter, $new ) = @_;
+   if ( !$new ) {
+      $ENV{MKDEBUG} && _d('No new DB to use');
+      return;
+   }
+   my $sql = 'SELECT DATABASE()';
+   $ENV{MKDEBUG} && _d($sql);
+   my $curr = $dbh->selectrow_array($sql);
+   if ( $curr && $new && $curr eq $new ) {
+      $ENV{MKDEBUG} && _d('Current and new DB are the same');
+      return $curr;
+   }
+   $sql = 'USE ' . $quoter->quote($new);
+   $ENV{MKDEBUG} && _d($sql);
+   $dbh->do($sql);
+   return $curr;
+}
+
+sub get_create_table {
+   my ( $self, $dbh, $quoter, $db, $tbl ) = @_;
+   if ( !$self->{cache} || !$self->{tables}->{$db}->{$tbl} ) {
+      my $sql = '/*!40101 SET @OLD_SQL_MODE := @@SQL_MODE, '
+         . '@@SQL_MODE := REPLACE(REPLACE(@@SQL_MODE, "ANSI_QUOTES", ""), ",,", ","), '
+         . '@OLD_QUOTE := @@SQL_QUOTE_SHOW_CREATE, '
+         . '@@SQL_QUOTE_SHOW_CREATE := 1 */';
+      $ENV{MKDEBUG} && _d($sql);
+      $dbh->do($sql);
+      my $curr_db = $self->_use_db($dbh, $quoter, $db);
+      $sql = "SHOW CREATE TABLE " . $quoter->quote($db, $tbl);
+      $ENV{MKDEBUG} && _d($sql);
+      my $href = $dbh->selectrow_hashref($sql);
+      $self->_use_db($dbh, $quoter, $curr_db);
+      $sql = '/*!40101 SET @@SQL_MODE := @OLD_SQL_MODE, '
+         . '@@SQL_QUOTE_SHOW_CREATE := @OLD_QUOTE */';
+      $ENV{MKDEBUG} && _d($sql);
+      $dbh->do($sql);
+      my ($key) = grep { m/create table/i } keys %$href;
+      if ( $key ) {
+         $ENV{MKDEBUG} && _d('This table is a base table');
+         $self->{tables}->{$db}->{$tbl} = [ 'table', $href->{$key} ];
+      }
+      else {
+         $ENV{MKDEBUG} && _d('This table is a view');
+         ($key) = grep { m/create view/i } keys %$href;
+         $self->{tables}->{$db}->{$tbl} = [ 'view', $href->{$key} ];
+      }
+   }
+   return $self->{tables}->{$db}->{$tbl};
+}
+
+sub get_columns {
+   my ( $self, $dbh, $quoter, $db, $tbl ) = @_;
+   $ENV{MKDEBUG} && _d("Get columns for $db.$tbl");
+   if ( !$self->{cache} || !$self->{columns}->{$db}->{$tbl} ) {
+      my $curr_db = $self->_use_db($dbh, $quoter, $db);
+      my $sql = "SHOW COLUMNS FROM " . $quoter->quote($db, $tbl);
+      $ENV{MKDEBUG} && _d($sql);
+      my $cols = $dbh->selectall_arrayref($sql, { Slice => {} });
+      $self->_use_db($dbh, $quoter, $curr_db);
+      $self->{columns}->{$db}->{$tbl} = [
+         map {
+            my %row;
+            @row{ map { lc $_ } keys %$_ } = values %$_;
+            \%row;
+         } @$cols
+      ];
+   }
+   return $self->{columns}->{$db}->{$tbl};
+}
+
+sub get_tmp_table {
+   my ( $self, $dbh, $quoter, $db, $tbl ) = @_;
+   my $result = 'CREATE TABLE ' . $quoter->quote($tbl) . " (\n";
+   $result .= join(",\n",
+      map { '  ' . $quoter->quote($_->{field}) . ' ' . $_->{type} }
+      @{$self->get_columns($dbh, $quoter, $db, $tbl)});
+   $result .= "\n)";
+   $ENV{MKDEBUG} && _d($result);
+   return $result;
+}
+
+sub get_triggers {
+   my ( $self, $dbh, $quoter, $db, $tbl ) = @_;
+   if ( !$self->{cache} || !$self->{triggers}->{$db} ) {
+      $self->{triggers}->{$db} = {};
+      my $sql = '/*!40101 SET @OLD_SQL_MODE := @@SQL_MODE, '
+         . '@@SQL_MODE := REPLACE(REPLACE(@@SQL_MODE, "ANSI_QUOTES", ""), ",,", ","), '
+         . '@OLD_QUOTE := @@SQL_QUOTE_SHOW_CREATE, '
+         . '@@SQL_QUOTE_SHOW_CREATE := 1 */';
+      $ENV{MKDEBUG} && _d($sql);
+      $dbh->do($sql);
+      $sql = "SHOW TRIGGERS FROM " . $quoter->quote($db);
+      $ENV{MKDEBUG} && _d($sql);
+      my $sth = $dbh->prepare($sql);
+      $sth->execute();
+      if ( $sth->rows ) {
+         my $trgs = $sth->fetchall_arrayref({});
+         foreach my $trg (@$trgs) {
+            my %trg;
+            @trg{ map { lc $_ } keys %$trg } = values %$trg;
+            push @{ $self->{triggers}->{$db}->{ $trg{table} } }, \%trg;
+         }
+      }
+      $sql = '/*!40101 SET @@SQL_MODE := @OLD_SQL_MODE, '
+         . '@@SQL_QUOTE_SHOW_CREATE := @OLD_QUOTE */';
+      $ENV{MKDEBUG} && _d($sql);
+      $dbh->do($sql);
+   }
+   if ( $tbl ) {
+      return $self->{triggers}->{$db}->{$tbl};
+   }
+   return values %{$self->{triggers}->{$db}};
+}
+
+sub get_databases {
+   my ( $self, $dbh, $quoter, $like ) = @_;
+   if ( !$self->{cache} || !$self->{databases} || $like ) {
+      my $sql = 'SHOW DATABASES';
+      my @params;
+      if ( $like ) {
+         $sql .= ' LIKE ?';
+         push @params, $like;
+      }
+      my $sth = $dbh->prepare($sql);
+      $ENV{MKDEBUG} && _d($sql, @params);
+      $sth->execute( @params );
+      my @dbs = map { $_->[0] } @{$sth->fetchall_arrayref()};
+      $self->{databases} = \@dbs unless $like;
+      return @dbs;
+   }
+   return @{$self->{databases}};
+}
+
+sub get_table_status {
+   my ( $self, $dbh, $quoter, $db, $like ) = @_;
+   if ( !$self->{cache} || !$self->{table_status}->{$db} || $like ) {
+      my $sql = "SHOW TABLE STATUS FROM " . $quoter->quote($db);
+      my @params;
+      if ( $like ) {
+         $sql .= ' LIKE ?';
+         push @params, $like;
+      }
+      $ENV{MKDEBUG} && _d($sql, @params);
+      my $sth = $dbh->prepare($sql);
+      $sth->execute(@params);
+      my @tables = @{$sth->fetchall_arrayref({})};
+      @tables = map {
+         my %tbl; # Make a copy with lowercased keys
+         @tbl{ map { lc $_ } keys %$_ } = values %$_;
+         $tbl{engine} ||= $tbl{type} || $tbl{comment};
+         delete $tbl{type};
+         \%tbl;
+      } @tables;
+      $self->{table_status}->{$db} = \@tables unless $like;
+      return @tables;
+   }
+   return @{$self->{table_status}->{$db}};
+}
+
+sub get_table_list {
+   my ( $self, $dbh, $quoter, $db, $like ) = @_;
+   if ( !$self->{cache} || !$self->{table_list}->{$db} || $like ) {
+      my $sql = "SHOW /*!50002 FULL*/ TABLES FROM " . $quoter->quote($db);
+      my @params;
+      if ( $like ) {
+         $sql .= ' LIKE ?';
+         push @params, $like;
+      }
+      $ENV{MKDEBUG} && _d($sql, @params);
+      my $sth = $dbh->prepare($sql);
+      $sth->execute(@params);
+      my @tables = @{$sth->fetchall_arrayref()};
+      @tables = map {
+         my %tbl = (
+            name   => $_->[0],
+            engine => ($_->[1] || '') eq 'VIEW' ? 'VIEW' : '',
+         );
+         \%tbl;
+      } @tables;
+      $self->{table_list}->{$db} = \@tables unless $like;
+      return @tables;
+   }
+   return @{$self->{table_list}->{$db}};
+}
+
+
+sub _d {
+   my ( $line ) = (caller(0))[2];
+   @_ = map { (my $temp = $_) =~ s/\n/\n# /g; $temp; } @_;
+   print "# MySQLDump:$line $PID ", @_, "\n";
+}
+
+1;
+
+# ###########################################################################
+# End MySQLDump package
+# ###########################################################################
+
+# ###########################################################################
+# TableChunker package 2126
+# ###########################################################################
+use strict;
+use warnings FATAL => 'all';
+
+package TableChunker;
+
+use English qw(-no_match_vars);
+use POSIX qw(ceil);
+use List::Util qw(min max);
+
+sub new {
+   my ( $class, %args ) = @_;
+   die "I need a quoter" unless $args{quoter};
+   bless { %args }, $class;
+}
+
+my $EPOCH      = '1970-01-01';
+my %int_types  = map { $_ => 1 }
+   qw( bigint date datetime int mediumint smallint time timestamp tinyint year );
+my %real_types = map { $_ => 1 }
+   qw( decimal double float );
+
+sub find_chunk_columns {
+   my ( $self, $table, $opts ) = @_;
+   $opts ||= {};
+
+   my %prefer;
+   if ( $opts->{possible_keys} && @{$opts->{possible_keys}} ) {
+      my $i = 1;
+      %prefer = map { $_ => $i++ } @{$opts->{possible_keys}};
+      $ENV{MKDEBUG} && _d("Preferred indexes for chunking: "
+         . join(', ', @{$opts->{possible_keys}}));
+   }
+
+   my @candidate_cols;
+
+   my @possible_keys = grep { $_->{type} eq 'BTREE' } values %{$table->{keys}};
+   @possible_keys = sort {
+      ($prefer{$a->{name}} || 9999) <=> ($prefer{$b->{name}} || 9999)
+   } @possible_keys;
+   $ENV{MKDEBUG} && _d('Possible keys in order: '
+      . join(', ', map { $_->{name} } @possible_keys));
+
+   my $can_chunk_exact = 0;
+   if ($opts->{exact}) {
+      @candidate_cols =
+         grep {
+            $int_types{$table->{type_for}->{$_}}
+            || $real_types{$table->{type_for}->{$_}}
+         }
+         map  { $_->{cols}->[0] }
+         grep { $_->{unique} && @{$_->{cols}} == 1 }
+              @possible_keys;
+      if ( @candidate_cols ) {
+         $can_chunk_exact = 1;
+      }
+      $ENV{MKDEBUG} && _d('Exact chunkable: ' . join(', ', @candidate_cols));
+   }
+
+   if ( !@candidate_cols ) {
+      @candidate_cols =
+         grep {
+            $int_types{$table->{type_for}->{$_}}
+            || $real_types{$table->{type_for}->{$_}}
+         }
+         map { $_->{cols}->[0] }
+         @possible_keys;
+      $ENV{MKDEBUG} && _d('Inexact chunkable: ' . join(', ', @candidate_cols));
+   }
+
+   my @result;
+   if ( !%prefer ) {
+      $ENV{MKDEBUG} && _d('Ordering columns by order in tbl, PK first');
+      if ( $table->{keys}->{PRIMARY} ) {
+         my $pk_first_col = $table->{keys}->{PRIMARY}->{cols}->[0];
+         @result = grep { $_ eq $pk_first_col } @candidate_cols;
+         @candidate_cols = grep { $_ ne $pk_first_col } @candidate_cols;
+      }
+      my $i = 0;
+      my %col_pos = map { $_ => $i++ } @{$table->{cols}};
+      push @result, sort { $col_pos{$a} <=> $col_pos{$b} } @candidate_cols;
+   }
+   else {
+      @result = @candidate_cols;
+   }
+   $ENV{MKDEBUG} && _d('Chunkable columns: ' . join(', ', @result));
+   $ENV{MKDEBUG} && _d("Can chunk exactly: $can_chunk_exact");
+
+   return ($can_chunk_exact, \@result);
+}
+
+sub calculate_chunks {
+   my ( $self, %args ) = @_;
+   foreach my $arg ( qw(table col min max rows_in_range size dbh) ) {
+      die "Required argument $arg not given or undefined"
+         unless defined $args{$arg};
+   }
+   $ENV{MKDEBUG} && _d("Arguments: "
+      . join(', ',
+         map { "$_=" . (defined $args{$_} ? $args{$_} : 'undef') } keys %args));
+
+   my @chunks;
+   my ($range_func, $start_point, $end_point);
+   my $col_type = $args{table}->{type_for}->{$args{col}};
+   $ENV{MKDEBUG} && _d("Chunking on $args{col} ($col_type)");
+
+
+   if ( $col_type =~ m/(?:int|year|float|double|decimal)$/ ) {
+      $start_point = $args{min};
+      $end_point   = $args{max};
+      $range_func  = 'range_num';
+   }
+   elsif ( $col_type eq 'timestamp' ) {
+      my $sql = "SELECT UNIX_TIMESTAMP('$args{min}'), UNIX_TIMESTAMP('$args{max}')";
+      $ENV{MKDEBUG} && _d($sql);
+      ($start_point, $end_point) = $args{dbh}->selectrow_array($sql);
+      $range_func  = 'range_timestamp';
+   }
+   elsif ( $col_type eq 'date' ) {
+      my $sql = "SELECT TO_DAYS('$args{min}'), TO_DAYS('$args{max}')";
+      $ENV{MKDEBUG} && _d($sql);
+      ($start_point, $end_point) = $args{dbh}->selectrow_array($sql);
+      $range_func  = 'range_date';
+   }
+   elsif ( $col_type eq 'time' ) {
+      my $sql = "SELECT TIME_TO_SEC('$args{min}'), TIME_TO_SEC('$args{max}')";
+      $ENV{MKDEBUG} && _d($sql);
+      ($start_point, $end_point) = $args{dbh}->selectrow_array($sql);
+      $range_func  = 'range_time';
+   }
+   elsif ( $col_type eq 'datetime' ) {
+      $start_point = $self->timestampdiff($args{dbh}, $args{min});
+      $end_point   = $self->timestampdiff($args{dbh}, $args{max});
+      $range_func  = 'range_datetime';
+   }
+   else {
+      die "I don't know how to chunk $col_type\n";
+   }
+
+   if ( !defined $start_point ) {
+      $ENV{MKDEBUG} && _d('Start point is undefined');
+      $start_point = 0;
+   }
+   if ( !defined $end_point || $end_point < $start_point ) {
+      $ENV{MKDEBUG} && _d('End point is undefined or before start point');
+      $end_point = 0;
+   }
+   $ENV{MKDEBUG} && _d("Start and end of chunk range: $start_point, $end_point");
+
+   my $interval = $args{size} * ($end_point - $start_point) / $args{rows_in_range};
+   if ( $int_types{$col_type} ) {
+      $interval = ceil($interval);
+   }
+   $interval ||= $args{size};
+   if ( $args{exact} ) {
+      $interval = $args{size};
+   }
+   $ENV{MKDEBUG} && _d("Chunk interval: $interval units");
+
+   my $col = "`$args{col}`";
+   if ( $start_point < $end_point ) {
+      my ( $beg, $end );
+      my $iter = 0;
+      for ( my $i = $start_point; $i < $end_point; $i += $interval ) {
+         ( $beg, $end ) = $self->$range_func($args{dbh}, $i, $interval, $end_point);
+
+         if ( $iter++ == 0 ) {
+            push @chunks, "$col < " . $self->quote($end);
+         }
+         else {
+            push @chunks, "$col >= " . $self->quote($beg) . " AND $col < " . $self->quote($end);
+         }
+      }
+
+      my $nullable = $args{table}->{is_nullable}->{$args{col}};
+      pop @chunks;
+      if ( @chunks ) {
+         push @chunks, "$col >= " . $self->quote($beg);
+      }
+      else {
+         push @chunks, $nullable ? "$col IS NOT NULL" : '1=1';
+      }
+      if ( $nullable ) {
+         push @chunks, "$col IS NULL";
+      }
+
+   }
+   else {
+      push @chunks, '1=1';
+   }
+
+   return @chunks;
+}
+
+sub get_first_chunkable_column {
+   my ( $self, $table, $opts ) = @_;
+   my ($exact, $cols) = $self->find_chunk_columns($table, $opts);
+   return $cols->[0];
+}
+
+sub size_to_rows {
+   my ( $self, $dbh, $db, $tbl, $size, $dumper ) = @_;
+  
+   my ( $num, $suffix ) = $size =~ m/^(\d+)([MGk])?$/;
+   if ( $suffix ) { # Convert to bytes.
+      $size = $suffix eq 'k' ? $num * 1_024
+            : $suffix eq 'M' ? $num * 1_024 * 1_024
+            :                  $num * 1_024 * 1_024 * 1_024;
+   }
+   elsif ( $num ) {
+      return $num;
+   }
+   else {
+      die "Invalid size spec $size; must be an integer with optional suffix kMG";
+   }
+
+   my @status = $dumper->get_table_status($dbh, $self->{quoter}, $db);
+   my ($status) = grep { $_->{name} eq $tbl } @status;
+   my $avg_row_length = $status->{avg_row_length};
+   return $avg_row_length ? ceil($size / $avg_row_length) : undef;
+}
+
+sub get_range_statistics {
+   my ( $self, $dbh, $db, $tbl, $col, $where ) = @_;
+   my $q = $self->{quoter};
+   my $sql = "SELECT MIN(" . $q->quote($col) . "), MAX(" . $q->quote($col)
+      . ") FROM " . $q->quote($db, $tbl)
+      . ($where ? " WHERE $where" : '');
+   $ENV{MKDEBUG} && _d($sql);
+   my ( $min, $max ) = $dbh->selectrow_array($sql);
+   $sql = "EXPLAIN SELECT * FROM " . $q->quote($db, $tbl)
+      . ($where ? " WHERE $where" : '');
+   $ENV{MKDEBUG} && _d($sql);
+   my $expl = $dbh->selectrow_hashref($sql);
+   return (
+      min           => $min,
+      max           => $max,
+      rows_in_range => $expl->{rows},
+   );
+}
+
+sub quote {
+   my ( $self, $val ) = @_;
+   return $val =~ m/\d[:-]/ ? qq{"$val"} : $val;
+}
+
+sub inject_chunks {
+   my ( $self, %args ) = @_;
+   foreach my $arg ( qw(database table chunks chunk_num query) ) {
+      die "$arg is required" unless defined $args{$arg};
+   }
+   $ENV{MKDEBUG} && _d("Injecting chunk $args{chunk_num}");
+   my $comment = sprintf("/*%s.%s:%d/%d*/",
+      $args{database}, $args{table},
+      $args{chunk_num} + 1, scalar @{$args{chunks}});
+   $args{query} =~ s!/\*PROGRESS_COMMENT\*/!$comment!;
+   my $where = "WHERE (" . $args{chunks}->[$args{chunk_num}] . ')';
+   if ( $args{where} ) {
+      $where .= " AND ($args{where})";
+   }
+   $args{query} =~ s!/\*WHERE\*/! $where!;
+   my $db_tbl = $self->{quoter}->quote(@args{qw(database table)});
+   $args{query} =~ s!/\*DB_TBL\*/!$db_tbl!;
+   $args{query} =~ s!/\*CHUNK_NUM\*/! $args{chunk_num} AS chunk_num,!;
+   return $args{query};
+}
+
+sub range_num {
+   my ( $self, $dbh, $start, $interval, $max ) = @_;
+   my $end = min($max, $start + $interval);
+   $start =~ s/\.(\d{5}).*$/.$1/;
+   $end   =~ s/\.(\d{5}).*$/.$1/;
+   if ( $end > $start ) {
+      return ( $start, $end );
+   }
+   else {
+      die "Chunk size is too small: $end !> $start\n";
+   }
+}
+
+sub range_time {
+   my ( $self, $dbh, $start, $interval, $max ) = @_;
+   my $sql = "SELECT SEC_TO_TIME($start), SEC_TO_TIME(LEAST($max, $start + $interval))";
+   $ENV{MKDEBUG} && _d($sql);
+   return $dbh->selectrow_array($sql);
+}
+
+sub range_date {
+   my ( $self, $dbh, $start, $interval, $max ) = @_;
+   my $sql = "SELECT FROM_DAYS($start), FROM_DAYS(LEAST($max, $start + $interval))";
+   $ENV{MKDEBUG} && _d($sql);
+   return $dbh->selectrow_array($sql);
+}
+
+sub range_datetime {
+   my ( $self, $dbh, $start, $interval, $max ) = @_;
+   my $sql = "SELECT DATE_ADD('$EPOCH', INTERVAL $start SECOND), "
+       . "DATE_ADD('$EPOCH', INTERVAL LEAST($max, $start + $interval) SECOND)";
+   $ENV{MKDEBUG} && _d($sql);
+   return $dbh->selectrow_array($sql);
+}
+
+sub range_timestamp {
+   my ( $self, $dbh, $start, $interval, $max ) = @_;
+   my $sql = "SELECT FROM_UNIXTIME($start), FROM_UNIXTIME(LEAST($max, $start + $interval))";
+   $ENV{MKDEBUG} && _d($sql);
+   return $dbh->selectrow_array($sql);
+}
+
+sub timestampdiff {
+   my ( $self, $dbh, $time ) = @_;
+   my $sql = "SELECT (TO_DAYS('$time') * 86400 + TIME_TO_SEC('$time')) "
+      . "- TO_DAYS('$EPOCH 00:00:00') * 86400";
+   my ( $diff ) = $dbh->selectrow_array($sql);
+   $sql = "SELECT DATE_ADD('$EPOCH', INTERVAL $diff SECOND)";
+   $ENV{MKDEBUG} && _d($sql);
+   my ( $check ) = $dbh->selectrow_array($sql);
+   die <<"   EOF"
+   Incorrect datetime math: given $time, calculated $diff but checked to $check.
+   This is probably because you are using a version of MySQL that overflows on
+   large interval values to DATE_ADD().  If not, please report this as a bug.
+   EOF
+      unless $check eq $time;
+   return $diff;
+}
+
+sub _d {
+   my ( $line ) = (caller(0))[2];
+   print "# TableChunker:$line $PID ", @_, "\n";
+}
+
+1;
+
+# ###########################################################################
+# End TableChunker package
+# ###########################################################################
+
+# ###########################################################################
+# Quoter package 1755
+# ###########################################################################
+use strict;
+use warnings FATAL => 'all';
+
+package Quoter;
+
+use English qw(-no_match_vars);
+
+sub new {
+   my ( $class ) = @_;
+   bless {}, $class;
+}
+
+sub quote {
+   my ( $self, @vals ) = @_;
+   foreach my $val ( @vals ) {
+      $val =~ s/`/``/g;
+   }
+   return join('.', map { '`' . $_ . '`' } @vals);
+}
+
+sub quote_val {
+   my ( $self, @vals ) = @_;
+   return join(', ',
+      map {
+         if ( defined $_ ) {
+            $_ =~ s/(['\\])/\\$1/g;
+            $_ eq '' || $_ =~ m/^0|\D/ ? "'$_'" : $_;
+         }
+         else {
+            'NULL';
+         }
+      } @vals
+   );
+}
+
+1;
+
+# ###########################################################################
+# End Quoter package
+# ###########################################################################
+
+package main;
+
+use English qw(-no_match_vars);
+use File::Basename qw(dirname);
+use File::Spec;
+use List::Util qw(max sum);
+use POSIX;
+use Time::HiRes qw(time);
+use Data::Dumper;
+$Data::Dumper::Indent    = 0;
+$Data::Dumper::Quotekeys = 0;
+
+# Globals -- as few as possible.
+my %opts = (
+   basedir  => File::Spec->curdir(),
+   C        => '',
+   gzip     => $OSNAME =~ m/Win32/ ? 0 : 1,
+);
+my @mysqldump_args;
+my @mysqldump_args_nodata;
+my $dp = new DSNParser();
+my $q  = new Quoter();
+my $tp = new TableParser();
+my $tc = new TableChunker(quoter => $q);
+
+# ############################################################################
+# Get configuration information.
+# ############################################################################
+
+eval {
+   # Try to read --numthread from the number of CPUs in /proc/cpuinfo.  This
+   # only works on GNU/Linux.
+   open my $file, "<", "/proc/cpuinfo"
+      or die $OS_ERROR;
+   local $INPUT_RECORD_SEPARATOR = undef;
+   my $contents = <$file>;
+   close $file;
+   $opts{m} = scalar( map { $_ } $contents =~ m/(processor)/g );
+};
+$opts{m} ||= $ENV{NUMBER_OF_PROCESSORS}; # MSWin32
+$opts{m} = max(2, $opts{m} || 0);
+
+# TODO: permit to disable resuming behavior.
+# TODO: permit dumping a single table in many threads.
+# TODO: measure progress by size, not count of tables.
+
+my @opt_spec = (
+   {  s => 'age=m',
+      d => 'Dump only tables modified since this long '
+         . 'ago, or not dumped since this long ago' },
+   {  s => 'askpass',
+      d => 'Prompt for password for connections' },
+   {  s => 'basedir=s',
+      d => 'Base directory for creating files' },
+   {  s => 'binlogpos|b!',
+      d => 'Dump the master/slave position (default)' },
+   {  s => 'charset|A=s',
+      d => 'Default character set' },
+   {  s => 'chunksize|C=s',
+      d => 'Number of rows or data size to dump per file' },
+   {  s => 'csv',
+      d => 'Do --tab dump in CSV format (implies --tab)' },
+   {  s => 'databases|d=h',
+      d => 'Dump only this comma-separated list of databases' },
+   {  s => 'dbregex=s',
+      d => 'Dump only databases whose names match this pattern' },
+   {  s => 'defaultset!',
+      d => 'When --sets given, dump tables not in any set' },
+   {  s => 'defaults-file|F=s',
+      d => 'Only read mysql options from the given file' },
+   {  s => 'flushlock|k!',
+      d => 'Use FLUSH TABLES WITH READ LOCK (default)' },
+   {  s => 'flushlog!',
+      d => 'Execute FLUSH LOGS when getting binlog positions' },
+   {  s => 'gzip!',
+      d => "Compress files with gzip (default $opts{gzip})" },
+   {  s => 'host|h=s',
+      d => 'Connect to host' },
+   {  s => 'ignoredb|g=H',
+      d => 'Ignore this comma-separated list of databases' },
+   {  s => 'ignoreengine|E=H',
+      d => 'Dump no data for this comma-separated list of storage engines '
+         . '(default FEDERATED,MRG_MyISAM)' },
+   {  s => 'ignoretbl|n=H',
+      d => 'Ignore this comma-separated list of tables' },
+   {  s => 'locktables!',
+      d => 'Use LOCK TABLES (disables --flushlock)' },
+   {  s => 'losslessfp|L',
+      d => 'Convert double and float to decimal with extra precision so '
+         . 'the reinserted values will be equal to the original values.  '
+         . 'Requires --tab.' },
+   {  s => 'numthread|m=i',
+      d => "Number of threads (default $opts{m})" },
+   {  s => 'password|p=s',
+      d => 'Password to use when connecting' },
+   {  s => 'port|P=i',
+      d => 'Port number to use for connection' },
+   {  s => 'progress',
+      d => 'Display progress messages' },
+   {  s => 'quiet|q',
+      d => 'Quiet output; disables --verbose' },
+   {  s => 'sets=a',
+      d => 'Dump this comma-separated list of sets' },
+   {  s => 'setperdb',
+      d => 'Dump each database as a separate set' },
+   {  s => 'settable=s',
+      d => 'database.table where backup sets are stored' },
+   {  s => 'setvars=s',
+      d => 'Set these MySQL variables (default wait_timeout=10000)' },
+   {  s => 'socket|S=s',
+      d => 'Socket file to use for connection' },
+   {  s => 'stopslave',
+      d => 'Issue STOP SLAVE on server before dumping data' },
+   {  s => 'tab|T',
+      d => 'Dump tab-separated (sets --umask 0)' },
+   {  s => 'tables|t=h',
+      d => 'Dump only this comma-separated list of tables' },
+   {  s => 'test',     ,
+      d => 'Print commands instead of executing them' },
+   {  s => 'tblregex=s',
+      d => 'Dump only tables whose names match this pattern' },
+   {  s => 'umask=s',
+      d => 'Set umask to this value, in octal' },
+   {  s => 'user|u=s',
+      d => 'User for login if not current user' },
+   {  s => 'verbose|v+',
+      d => 'Be verbose; can specify multiple times; default' },
+   {  s => 'wait|w=m',
+      d => 'Wait limit when server is down (default 5m)' },
+   '--locktables and --flushlock are mutually exclusive',
+   '--sets and --setperdb are mutually exclusive',
+   '--losslessfp requires --tab',
+);
+
+my $opt_parser = OptionParser->new(@opt_spec);
+$opt_parser->{strict} = 0;
+$opt_parser->{prompt} = '<options> [--] <external args>';
+$opt_parser->{descr}  = q{dumps sets of MySQL tables simultaneously via }
+                      . q{mysqldump or SELECT INTO OUTFILE.};
+%opts = $opt_parser->parse(%opts);
+$dp->prop('setvars', $opts{setvars});
+
+# ############################################################################
+# Process options.
+# ############################################################################
+$opts{basedir} = File::Spec->rel2abs($opts{basedir});
+
+# Set locking options.
+my $lock_all      = $opts{sets} || $opts{locktables} || $opts{setperdb} ? 0 : 1;
+$opts{k}          = $lock_all unless defined $opts{k};
+$opts{locktables} = !$lock_all unless defined $opts{locktables};
+
+# TODO: modularize these.
+if ( !$opts{help} ) {
+   if ( $opts{defaultset} && !$opts{sets} ) {
+      $opt_parser->error("--defaultset has no effect without --sets");
+   }
+
+   if ( !$opts{m} ) {
+      $opt_parser->error("You must specify --numthread");
+   }
+
+   if ( !$opts{help} && $opts{L} && !$opts{T} ) {
+      $opt_parser->error("--losslessfp requires --tab");
+   }
+
+   if ( !$opts{help} && $opts{sets} && !$opts{settable} ) {
+      $opt_parser->error("--sets requires --settable");
+   }
+
+   if ( $opts{T} && @ARGV ) {
+      $opt_parser->error("Unused arguments: @ARGV");
+   }
+}
+
+if ( $opts{csv} ) { # TODO: --csv implies --[no-]tab
+   $opts{T} = 1;
+}
+
+if ( $opts{T} ) { # TODO: --tab implies --umask 0
+   if ( !defined $opts{umask} ) {
+      $opts{umask} = 0;
+   }
+}
+
+if ( defined $opts{umask} ) {
+   umask oct($opts{umask});
+}
+
+$opt_parser->usage_or_errors(%opts);
+
+# ############################################################################
+# Gather connection parameters to pass to mysqldump.  Order matters; mysqldump
+# will have a problem if --defaults-file isn't first.
+# ############################################################################
+if ( !defined $opts{p} && $opts{askpass} ) {
+   $opts{p} = OptionParser::prompt_noecho("Enter password: ");
+}
+
+my @conn_params = (
+   [qw(--defaults-file F)],
+   [qw(--host          h)],
+   [qw(--password      p)],
+   [qw(--port          P)],
+   [qw(--socket        S)],
+   [qw(--user          u)],
+);
+@conn_params = map { "$_->[0]='$opts{$_->[1]}'" } grep { defined $opts{$_->[1]} } @conn_params;
+
+# ############################################################################
+# Decide on options to mysqldump.
+# ############################################################################
+if ( !@ARGV && !$opts{T} ) {
+   # Choose sensible defaults.  Inspect mysqldump --help to see what options
+   # it accepts.  Add --no-data by default, but then remove it for the ordinary
+   # mysqldump commands.  This is used to implement --ignoreengine
+   my $help = `mysqldump --help`;
+   if ( $CHILD_ERROR ) {
+      exit(1);
+   }
+   $help =~ s/\A.*?\n----//s;
+   my %is_opt = map { $_ => 1 } $help =~ m/^(\w[a-z_-]+)/gm;
+   my %skip   = map { $_ => 1 } qw(lock-all-tables lock-tables);
+   @mysqldump_args_nodata = (
+      qw(mysqldump),
+      @conn_params,
+      (
+         map  { $skip{$_} ? "--skip-$_" : "--$_" }
+         grep { $is_opt{$_} }
+         qw(
+            lock-all-tables
+            lock-tables
+            add-drop-table
+            add-locks
+            allow-keywords
+            comments
+            complete-insert
+            create-options
+            no-data
+            disable-keys
+            extended-insert
+            quick
+            quote-names
+            set-charset
+            triggers
+            tz-utc
+            no-create-info
+         )
+      ),
+      qw( %D %N ),
+   );
+   if ( $opts{C} ) {
+      push @mysqldump_args_nodata, qw( --where %W );
+   }
+   if ( $opts{gzip} ) {
+      push @mysqldump_args_nodata,
+         qw( | gzip --force --fast --stdout - > ),
+         filename('%S', '%D', '%N.%6C.sql.gz');
+   }
+   else {
+      push @mysqldump_args_nodata,
+         qw(--result-file),
+         filename('%S', '%D', '%N.%6C.sql');
+   }
+   @mysqldump_args = grep { $_ !~ m/no-data/ } @mysqldump_args_nodata;
+}
+
+else {
+   @mysqldump_args = @ARGV;
+}
+$ENV{MKDEBUG} && _d('Args for mysqldump: ', join(', ', @mysqldump_args));
+
+# ############################################################################
+# Connect.
+# ############################################################################
+my $dbh                  = $dp->get_dbh($dp->get_cxn_params(\%opts));
+$dbh->{InactiveDestroy}  = 1;         # Don't die on fork().
+$dbh->{FetchHashKeyName} = 'NAME_lc'; # Lowercases all column names for fetchrow_hashref()
+my $du                   = new MySQLDump();
+my $has_triggers         = VersionParser->new()->version_ge($dbh, '5.0.10');
+
+# This signal handler will do nothing but wake up the sleeping parent process
+# and record the exit status and time of the child that exited (as a side
+# effect of not discarding the signal).
+my %exited_children;
+$SIG{CHLD} = sub {
+   my $kid;
+   while (($kid = waitpid(-1, POSIX::WNOHANG)) > 0) {
+      $ENV{MKDEBUG} && _d('Process ', $kid, ' exited with ', $CHILD_ERROR);
+      # Must right-shift to get the actual exit status of the child.
+      $exited_children{$kid}->{exit_status} = $CHILD_ERROR >> 8;
+      $exited_children{$kid}->{exit_time}   = time();
+   }
+};
+
+# ############################################################################
+# Stop the slave if desired.
+# ############################################################################
+if ( $opts{stopslave} && !$opts{test} ) {
+   my $sql = 'SHOW STATUS LIKE "Slave_running"';
+   $ENV{MKDEBUG} && _d($sql);
+   my (undef, $slave_running) = $dbh->selectrow_array($sql);
+   $ENV{MKDEBUG} && _d($slave_running);
+   if ( ($slave_running || '') ne 'ON' ) {
+      die "This server is not a running slave";
+   }
+   $sql = 'STOP SLAVE';
+   $ENV{MKDEBUG} && _d($sql);
+   $dbh->do($sql);
+}
+
+# ############################################################################
+# Lock the whole server if desired.
+# ############################################################################
+if ( $opts{k} && !$opts{test} ) {
+   my $sql = 'FLUSH TABLES WITH READ LOCK';
+   $ENV{MKDEBUG} && _d($sql);
+   $dbh->do($sql);
+}
+
+# ############################################################################
+# Iterate over "sets" of tables.
+# ############################################################################
+my %tables_in_sets;
+my %tables_for_set;
+my %stats_for_set;
+my %tables_for;
+my @views;
+my @sets_to_do = $opts{sets} ? unique(@{$opts{sets}}) : ();
+
+# Fetch backup sets from the database.
+my $backedup_sth;
+if ( $opts{sets} ) {
+   foreach my $set ( @sets_to_do ) {
+      die "'default' is a reserved set; don't use it\n" if lc $set eq 'default';
+      my $sql = "SELECT `db`, `tbl` "
+              . "FROM $opts{settable} "
+              . "WHERE `setname` = '$set' "
+              . ($opts{age}
+                 ? "AND `ts` <= DATE_SUB(NOW(), INTERVAL $opts{age} SECOND) "
+                 : '')
+              . "ORDER BY `priority`, `db`, `tbl`";
+      $ENV{MKDEBUG} && _d($sql);
+      my $result = $dbh->selectall_arrayref($sql, { Slice => {} } );
+      foreach my $row ( @$result ) {
+         $ENV{MKDEBUG} && _d("Set $set contains $row->{db}.$row->{tbl}");
+         $stats_for_set{$set}->{tables}++;
+         $tables_in_sets{$row->{db}}->{$row->{tbl}}++;
+         push @{$tables_for_set{$set}}, [ $row->{db}, $row->{tbl} ];
+      }
+   }
+   if ( $opts{age} ) {
+      $backedup_sth = $dbh->prepare(
+         "UPDATE $opts{settable} AS `mysql_parallel_dump_writable` "
+         . "SET `ts` = NOW() WHERE `setname` = ? AND `db` = ? AND `tbl` = ?");
+   }
+}
+
+my %databases_for;
+
+my %findspec = (
+   quoter => $q,
+   dumper => $du,
+   databases => {
+      permit => $opts{d},
+      reject => $opts{g},
+      regexp => $opts{dbregex},
+   },
+   tables => {
+      permit => $opts{t},
+      reject => $opts{n},
+      regexp => $opts{tblregex},
+   },
+   engines => {
+      views  => 0,
+   },
+);
+if ( $opts{age} && !$opts{sets} ) {
+   push @{$findspec{tables}->{status}}, { Update_time => "$opts{age}" };
+}
+my $f  = new MySQLFind(%findspec);
+
+# Do all databases and tables in a 'default' set, possibly excluding those
+# that have been included in named sets above.  Or, if --setperdb is
+# specified, place each into its own set.
+if ( !$opts{sets} || $opts{defaultset} ) {
+   foreach my $database ( $f->find_databases($dbh) ) {
+      my $set = $opts{setperdb} ? $database : 'default';
+      push @{$databases_for{$set}}, $database;
+      push @sets_to_do, $set;
+   }
+   @sets_to_do = unique(@sets_to_do);
+}
+
+# ############################################################################
+# Do each backup set.
+# ############################################################################
+SET:
+foreach my $set ( @sets_to_do ) {
+
+   if ( !$opts{sets} ) { # Must fetch tables.
+      foreach my $database ( @{$databases_for{$set}} ) {
+         if ( !$tables_for{$database} ) {
+            my @tables = $f->find_tables($dbh, database => $database);
+            foreach my $table ( @tables ) {
+               push @{$tables_for{$database}}, $table;
+            }
+            push @views,
+               map { [ $database, $_ ] }
+                  $f->find_views($dbh, database => $database);
+         }
+         TABLE:
+         foreach my $table ( @{$tables_for{$database}} ) {
+            # Skip if in another set
+            if ( !$tables_in_sets{$database}->{$table} ) {
+               $stats_for_set{$set}->{tables}++;
+               $tables_in_sets{$database}->{$table}++;
+               push @{$tables_for_set{$set}}, [ $database, $table ];
+            }
+         }
+      }
+   }
+
+   if ( !$tables_for_set{$set} || !@{$tables_for_set{$set}} ) {
+      info(2, "No tables to do for set $set");
+      next SET;
+   }
+   my $start = time();
+   my $stats = $stats_for_set{$set};
+
+   # #########################################################################
+   # Lock tables if needed.  Cycle until there are none to lock or we get the
+   # lock (some tables could have been dropped between the time we got the
+   # list and now).
+   # #########################################################################
+   if ( $opts{locktables} && !$opts{test} ) {
+      my @to_lock;
+      my $done;
+      do {
+         @to_lock = unique(
+            map { $q->quote(@$_) . " READ" } @{$tables_for_set{$set}} );
+         if ( $backedup_sth ) {
+            push @to_lock, "$opts{settable} AS `mysql_parallel_dump_writable` WRITE";
+         }
+         eval {
+            my $sql = 'LOCK TABLES ' . join(', ', @to_lock);
+            $ENV{MKDEBUG} && _d('At time ', time(), ' ', $sql);
+            $dbh->do($sql);
+            $ENV{MKDEBUG} && _d('At time ', time(), ' lock succeeded');
+            $done = 1;
+         };
+         if ( $EVAL_ERROR ) {
+            $ENV{MKDEBUG} && _d($EVAL_ERROR);
+            my $err = mysql_error_msg($EVAL_ERROR);
+            my ($db, $tbl) = $err =~ m/Table '([^.]+)\.([^.]+)' doesn't exist/;
+            if ( $db && $tbl ) {
+               $ENV{MKDEBUG} && _d("Removing table $db.$tbl from set $set");
+               # Remove the nonexistent table and try again.
+               $tables_for_set{$set} = [
+                  grep { $_->[0] ne $db || $_->[1] ne $tbl } @{$tables_for_set{$set}}
+               ];
+               info(0, $err);
+            }
+            else {
+               die "Cannot lock tables: $err";
+            }
+         }
+      } while ( @to_lock && !$done );
+   }
+
+   # #########################################################################
+   # Flush logs.
+   # #########################################################################
+   if ( $opts{flushlog} && !$opts{test} ) {
+      my $sql = 'FLUSH LOGS';
+      $ENV{MKDEBUG} && _d($sql);
+      $dbh->do($sql);
+   }
+
+   my @work_to_do;
+   foreach my $db_tbl ( @{$tables_for_set{$set}} ) {
+      my @chunks = get_chunks($opts{C}, $set, @$db_tbl);
+      my $cols   = join(', ', get_columns(@$db_tbl));
+      my $i      = 0;
+      foreach my $chunk ( @chunks ) {
+         my $todo = {
+            D => $chunk->{D}, # Database name
+            N => $chunk->{N}, # Table name
+            S => $chunk->{S}, # Set name
+            C => $i++,        # Chunk number
+            W => $chunk->{W}, # WHERE clause
+            E => $chunk->{E}, # Storage engine
+            L => $cols,       # SELECT list
+         };
+         $ENV{MKDEBUG} && _d(Dumper($todo));
+         push @work_to_do, $todo;
+         $stats_for_set{$set}->{chunks}++;
+      }
+   }
+
+   # #########################################################################
+   # Get the master position.
+   # #########################################################################
+   if ( $opts{b} && !$opts{test} ) {
+      my $filename = filename($set, '00_master_data.sql');
+      makedir($filename);
+      $ENV{MKDEBUG} && _d("Writing to $filename");
+      open my $file, ">", $filename or die $OS_ERROR;
+      my %wanted = map { $_ => 1 }
+         qw(file position master_host master_port master_log_file
+         read_master_log_pos relay_log_file relay_log_pos relay_master_log_file
+         exec_master_log_pos);
+
+      my ( $master_pos, $slave_pos );
+      eval {
+         my $sql = 'SHOW MASTER STATUS';
+         $ENV{MKDEBUG} && _d($sql);
+         $master_pos = $dbh->selectrow_hashref($sql);
+      };
+      eval {
+         my $sql = 'SHOW SLAVE STATUS';
+         $ENV{MKDEBUG} && _d($sql);
+         $slave_pos = $dbh->selectrow_hashref($sql);
+         print {$file} "CHANGE MASTER TO MASTER_HOST='$slave_pos->{master_host}', "
+                     . "MASTER_LOG_FILE='$slave_pos->{relay_master_log_file}', "
+                     . "MASTER_LOG_POS=$slave_pos->{exec_master_log_pos}\n"
+                     or die $OS_ERROR;
+      };
+      my %hash;
+      foreach my $thing ( $master_pos, $slave_pos ) {
+         next unless $thing;
+         foreach my $key ( grep { $wanted{$_} } sort keys %$thing ) {
+            print $file "-- $key $thing->{$key}\n"
+               or die $OS_ERROR;
+         }
+      }
+
+      # Put the details of the chunks into the file.
+      foreach my $chunk ( @work_to_do ) {
+         print $file "-- CHUNK $chunk->{D} $chunk->{N} $chunk->{C} $chunk->{W}\n"
+            or die $OS_ERROR;
+      }
+
+      close $file or die $OS_ERROR;
+   }
+
+   # #########################################################################
+   # Design the format for printing out. TODO: modularize.
+   # #########################################################################
+   my ( $maxdb, $maxtbl, $maxset);
+   $maxdb  = max(8, map { length($_->{D}) } @work_to_do);
+   $maxtbl = max(5, map { length($_->{N}) } @work_to_do);
+   $maxset = max(3, length($set));
+   my $format = "%-${maxset}s %-${maxdb}s %-${maxtbl}s %5s %5s %6s %7s";
+   info(2, sprintf($format, qw(SET DATABASE TABLE CHUNK TIME STATUS THREADS)));
+
+   # #########################################################################
+   # Assign the work to child processes.  Initially just start --numthreads
+   # number of children.  Each child that exits will trigger a new one to start
+   # after that.  This is really a terrible hack -- I wish Perl had decent
+   # threading support so I could just queue work for a fixed pool of worker
+   # threads!
+   # #########################################################################
+
+   my $chunks = scalar @work_to_do; # For progress, use $start variable
+   my $done   = 0;                  # Also for progress measurements
+   my %kids;
+   while ( @work_to_do || %kids ) {
+
+      # Wait for the MySQL server to become responsive.
+      my $tries = 0;
+      while ( !$dbh->ping && $tries++ < $opts{w} ) {
+         sleep(1);
+         eval {
+            $dbh = $dp->get_dbh($dp->get_cxn_params(\%opts));
+         };
+         if ( $EVAL_ERROR ) {
+            info(0, 'Waiting: ' . scalar(localtime)
+               . ' ' . mysql_error_msg($EVAL_ERROR));
+         }
+      }
+      if ( $tries >= $opts{w} ) {
+         die "Too many retries, exiting.\n";
+      }
+
+      # Start a new child process.
+      while ( @work_to_do && $opts{m} > keys %kids ) {
+         my $todo = shift @work_to_do;
+
+         # See if this $todo has already been done.
+         my $filename  = filename(interp($todo, '%S', '%D', '%N.%6C'));
+         if ( -f "$filename.sql" || -f "$filename.sql.gz" ) {
+            info(2, "$filename is already done, skipping");
+            $done++;
+            next;
+         }
+
+         $todo->{time} = time;
+         my $pid = fork();
+         die "Can't fork: $OS_ERROR" unless defined $pid;
+         if ( $pid ) {              # I'm the parent
+            $kids{$pid} = $todo;
+         }
+         else {                     # I'm the child
+            $SIG{CHLD} = 'DEFAULT'; # See bug #1886444
+            $ENV{MKDEBUG} && _d("$PID got ", Dumper($todo));
+            my $exit_status = 0;
+            $exit_status = do_table($todo, $filename) || $exit_status;
+            exit($exit_status);
+         }
+      }
+
+      # Possibly wait for child.
+      my $reaped = 0;
+      foreach my $kid ( keys %exited_children ) {
+         my $status = $exited_children{$kid};
+         my $todo   = $kids{$kid};
+         my $stat   = $status->{exit_status};
+         if ( !$opts{test} && !$stat && $backedup_sth ) {
+            $backedup_sth->execute(@{$todo}{qw(S D N)});
+         }
+         my $time = $status->{exit_time} - $todo->{time};
+         info(2, sprintf($format, @{$todo}{qw(S D N C)},
+            sprintf('%.2f', $time), $stat, scalar(keys %kids)));
+         $stats->{ $stat ? 'failure' : 'success' }++;
+         $stats->{time} += $time;
+         delete $kids{$kid};
+         delete $exited_children{$kid};
+         $reaped = 1;
+         $done++;
+
+         if ( $opts{progress} ) {
+            my $pct = $done / $chunks;
+            my $now = time();
+            my $remaining = ($now - $start) / $pct;
+            info(1, sprintf("done: %4d /%4d %6.2f%% %s remain (%s)",
+               $done, $chunks, $pct * 100, secs_to_time($remaining),
+               ts($now + $remaining)));
+         }
+      }
+
+      if ( !$reaped ) {
+         # Don't busy-wait.  But don't wait forever either, as a child may exit
+         # and signal while we're not sleeping, so if we sleep forever we may
+         # not get the signal.
+         $ENV{MKDEBUG} && _d('No children reaped, sleeping');
+         sleep(1);
+      }
+   }
+
+   if ( $opts{locktables} && !$opts{test} ) {
+      my $sql = 'UNLOCK TABLES';
+      $ENV{MKDEBUG} && _d($sql);
+      $dbh->do($sql);
+      $dbh->commit;
+   }
+
+   $stats->{wallclock} = time() - $start;
+   info(1, sprintf( (@sets_to_do ? '%12s:          ' : '%s:')
+                   . '%5d tables, %5d chunks, %5d successes, %2d failures, '
+                   . '%6.2f wall-clock time, %6.2f dump time',
+                   $set, map { $stats->{$_} || 0 }
+                      qw(tables chunks success failure wallclock time) 
+                   ));
+}
+
+# ############################################################################
+# Dump views now.
+# ############################################################################
+if ( @views && !@ARGV && !$opts{test} ) {
+   my $filename = filename('default', '00_views');
+   my $fspec = $opts{gzip}
+      ? "| gzip --force --fast > $filename.sql.gz"
+      : "> $filename.sql";
+   makedir($filename);
+   open my $file, $fspec or die $OS_ERROR;
+   print {$file} $MySQLDump::before or die $OS_ERROR;
+   foreach my $view ( @views ) {
+      print {$file} "USE $view->[0];\n",
+         $du->dump($dbh, $q, @$view, 'table') or die $OS_ERROR;
+   }
+   foreach my $view ( @views ) {
+      print {$file} "USE $view->[0];\n",
+         $du->dump($dbh, $q, @$view, 'view') or die $OS_ERROR;
+   }
+   print {$file} $MySQLDump::after or die $OS_ERROR;
+   close $file or die $OS_ERROR;
+}
+
+if ( !$opts{test} ) {
+   my $sql = 'UNLOCK TABLES';
+   $ENV{MKDEBUG} && _d($sql);
+   $dbh->do($sql);
+}
+
+# ############################################################################
+# Restart the slave if desired.
+# ############################################################################
+if ( $opts{stopslave} && !$opts{test} ) {
+   my $sql = 'START SLAVE';
+   $ENV{MKDEBUG} && _d($sql);
+   $dbh->do($sql);
+}
+
+$dbh->commit;
+$dbh->disconnect;
+
+if ( @sets_to_do > 1 ) {
+   info(1, sprintf(
+      'Final result: %2d sets, %5d tables, %5d chunks, '
+      . '%5d successes, %2d failures, '
+      . '%6.2f wall-clock time, %6.2f dump time',
+      scalar(@sets_to_do),
+         map {
+            my $thing = $_;
+            sum(0, map { $_->{$thing} || 0 } values %stats_for_set);
+         } qw(tables chunks success failure wallclock time)
+      ));
+}
+
+# Exit status is 1 if there were any failures.
+exit( sum(0, map { $_->{failure} || 0 } values %stats_for_set) ? 1 : 0 );
+
+# ############################################################################
+# Subroutines
+# ############################################################################
+
+# TODO: modularize
+sub secs_to_time {
+   my ( $secs, $fmt ) = @_;
+   $secs ||= 0;
+   return '00:00' unless $secs;
+
+   # Decide what format to use, if not given
+   $fmt ||= $secs >= 86_400 ? 'd'
+          : $secs >= 3_600  ? 'h'
+          :                   'm';
+
+   return
+      $fmt eq 'd' ? sprintf(
+         "%d+%02d:%02d:%02d",
+         int($secs / 86_400),
+         int(($secs % 86_400) / 3_600),
+         int(($secs % 3_600) / 60),
+         $secs % 60)
+      : $fmt eq 'h' ? sprintf(
+         "%02d:%02d:%02d",
+         int(($secs % 86_400) / 3_600),
+         int(($secs % 3_600) / 60),
+         $secs % 60)
+      : sprintf(
+         "%02d:%02d",
+         int(($secs % 3_600) / 60),
+         $secs % 60);
+}
+
+# TODO: modularize
+sub ts {
+   my ( $time ) = @_;
+   my ( $sec, $min, $hour, $mday, $mon, $year )
+      = localtime($time);
+   $mon  += 1;
+   $year += 1900;
+   return sprintf("%d-%02d-%02dT%02d:%02d:%02d",
+      $year, $mon, $mday, $hour, $min, $sec);
+}
+
+# TODO: modularize.
+sub mysql_error_msg {
+   my ( $text ) = @_;
+   $text =~ s/^.*?failed: (.*?) at \S+ line (\d+).*$/$1 at line $2/s;
+   return $text;
+}
+
+# Decides on a SELECT list.  For FLOAT and DOUBLE, if lossless floating point
+# dumps are desired, wrap the column with REPLACE(FORMAT(col, 17), ',', '').
+sub get_columns {
+   my ( $db, $tbl ) = @_;
+   return '*' unless $opts{L};
+   my $table = $tp->parse($du->get_create_table($dbh, $q, $db, $tbl));
+   my @cols = map {
+      $table->{type_for}->{$_} =~ m/float|double/
+         ? sprintf("REPLACE(FORMAT(%s, 17), ',', '')", $q->quote($_))
+         : $q->quote($_)
+   } @{$table->{cols}};
+   return @cols;
+}
+
+sub get_chunks {
+   my ( $spec, $set, $db, $tbl ) = @_;
+   my $table = $tp->parse($du->get_create_table($dbh, $q, $db, $tbl));
+
+   # Decide where to store the file of chunks, which is important for resuming a
+   # dump -- the precalculated chunks must be used, not re-calculated, or
+   # resuming might go awry.
+   my $hashref    = { S => $set, D => $db, N => $tbl };
+   my $chunkfile = filename(interp($hashref, '%S', '%D', '%N.chunks'));
+   makedir($chunkfile);
+
+   if ( !$opts{test} && -f $chunkfile ) {
+      $ENV{MKDEBUG} && _d("Chunk file $chunkfile exists, using it");
+      open my $fh, "<", $chunkfile or die "Can't open $chunkfile: $OS_ERROR";
+      my @todo;
+      while ( my $where = <$fh> ) {
+         chomp $where;
+         push @todo, {
+            D => $db,
+            N => $tbl,
+            S => $set,
+            W => $where,
+            E => $table->{engine},
+         };
+      };
+      close $fh or die "Can't close $chunkfile: $OS_ERROR";
+      return @todo;
+   }
+   my $cant_chunk = {
+      D => $db,
+      N => $tbl,
+      S => $set,
+      W => '1=1',
+      E => $table->{engine},
+   };
+   return $cant_chunk unless $spec;
+
+   my $rows_per_chunk = $tc->size_to_rows($dbh, $db, $tbl, $spec, $du);
+
+   # Get the chunk column candidates
+   my $col   = $tc->get_first_chunkable_column($table);
+   return $cant_chunk unless $col;
+   my %params = $tc->get_range_statistics($dbh, $db, $tbl, $col);
+   return $cant_chunk
+      if grep { !defined $params{$_} } qw(min max rows_in_range);
+
+   my @chunks = $tc->calculate_chunks(
+      dbh      => $dbh,
+      table    => $table,
+      col      => $col,
+      size     => $rows_per_chunk,
+      %params,
+   );
+   my $fh;
+   if ( !$opts{test} ) {
+      open $fh, ">", $chunkfile or die "Can't open $chunkfile: $OS_ERROR";
+   }
+   my @todo = map {
+      if ( !$opts{test} ) {
+         print $fh $_, "\n" or die "Can't print to $chunkfile: $OS_ERROR";
+      }
+      {
+         D => $db,
+         N => $tbl,
+         S => $set,
+         W => $_,
+         E => $table->{engine},
+      }
+   } @chunks;
+   if ( !$opts{test} ) {
+      close $fh or die "Can't close $chunkfile: $OS_ERROR";
+   }
+   return @todo;
+}
+
+# Prints a message.
+sub info {
+   my ( $level, $msg ) = @_;
+   if ( $level <= ($opts{v} || 0) ) {
+      print $msg, "\n";
+   }
+}
+
+# TODO: modularize
+sub unique {
+   my %seen;
+   grep { !$seen{$_}++ } @_;
+}
+
+# Interpolates % directives from a db/tbl hashref.
+sub interp {
+   my ( $todo, @strings ) = @_;
+   map { $_ =~ s/%(\d+)?([SDNCW])/$1 ? sprintf("%0$1d", $todo->{$2}) : $todo->{$2}/ge } @strings;
+   return @strings;
+}
+
+# Actually dumps a table.
+sub do_table {
+   my ( $todo, $filename ) = @_;
+
+   my $exit_status = 0;
+   my $D         = $q->quote($todo->{D});
+   my $N         = $q->quote($todo->{N});
+
+   # Since we're forked we need to create our own DBH.  Not doing so leads to
+   # re-using the parent's (global) DBH, which leads to really hard-to-find bugs
+   # with forking and zombies.  Bleh.
+   my $localdbh  = undef;
+
+   if ( $todo->{C} == 0 && $has_triggers && !$opts{test} ) {
+      makedir($filename);
+      $localdbh ||= $dp->get_dbh($dp->get_cxn_params(\%opts));
+      my $trg = $du->dump($localdbh, $q, $todo->{D}, $todo->{N}, 'triggers');
+      if ( $trg ) {
+         my $fspec = $opts{gzip}
+            ? "| gzip --force --fast > $filename.trg.gz"
+            : "> $filename.trg";
+         open my $file, $fspec or die "Couldn't open $fspec: $OS_ERROR";
+         print {$file} $trg    or die "Couldn't print to $fspec: $OS_ERROR";
+         close $file           or die "Couldn't close $fspec: $OS_ERROR";
+      }
+   }
+
+   # Dump via SELECT INTO OUTFILE.
+   if ( $opts{T} ) {
+      $localdbh ||= $dp->get_dbh($dp->get_cxn_params(\%opts));
+
+      makedir($filename);
+
+      # Dump the schema before the first chunk.
+      if ( !$opts{test} && $todo->{C} == 0 ) {
+         # Table definition.
+         my $ddl = $du->dump($localdbh, $q, $todo->{D}, $todo->{N}, 'table');
+         if ( $ddl ) {
+            my $fspec = $opts{gzip}
+               ? "| gzip --force --fast > $filename.sql.gz"
+               : "> $filename.sql";
+            open my $file, $fspec or die "Couldn't open $fspec: $OS_ERROR";
+            print {$file} $ddl    or die "Couldn't print to $fspec: $OS_ERROR";
+            close $file           or die "Couldn't close $fspec: $OS_ERROR";
+         }
+      }
+
+      # Dump the data.
+      if ( !$opts{E}->{$todo->{E}} ) { # Don't dump data for these engines...
+         my $sql
+           = $opts{csv}
+           ?    "SELECT $todo->{L} INTO OUTFILE '$filename.txt' "
+              . "FIELDS TERMINATED BY ',' OPTIONALLY ENCLOSED BY '\\\"' "
+              . "LINES TERMINATED BY '\\n' FROM $D.$N"
+           :    "SELECT $todo->{L} INTO OUTFILE '$filename.txt' "
+              . "FROM $D.$N WHERE $todo->{W}";
+         if ( $opts{test} ) {
+            print $sql, "\n";
+         }
+         else {
+            eval {
+               $localdbh->do($sql);
+            };
+            if ( $EVAL_ERROR ) {
+               die mysql_error_msg($EVAL_ERROR) . "\n";
+            }
+         }
+         if ( $opts{gzip} ) {
+            $exit_status = system_call(
+               'gzip', '--force', '--fast', "$filename.txt");
+         }
+      }
+   }
+   else {
+      # It's either a custom command, or it's a regular SQL dump and we're going
+      # to dump data.
+
+      # If the user left the options alone, we can predict the filename and
+      # directory naming convention, and ensure the directories exist.
+      # Otherwise the user must ensure the directories exist.
+      if ( !@ARGV ) {
+         makedir(interp($todo, filename('%S', '%D', '%N.%6C.sql')));
+      }
+
+      my @args
+         = $opts{E}->{$todo->{E}} ? @mysqldump_args_nodata : @mysqldump_args;
+      # Do a DROP/CREATE only for the first chunk.
+      if ( !@ARGV && $todo->{C} == 0 ) {
+         @args = grep { $_ !~ m/--no-create-info/ } @args;
+      }
+
+      @args = map { interp($todo, $_) } @args;
+
+      $exit_status = system_call( @args ) || $exit_status;
+   }
+
+   $localdbh && $localdbh->disconnect;
+   return $exit_status;
+}
+
+# Makes a filename.
+sub filename {
+   my $filename = File::Spec->catfile($opts{basedir}, @_);
+   return $filename;
+}
+
+{
+   # Memoize...
+   my %dirs;
+
+   # If the directory doesn't exist, makes the directory.
+   sub makedir {
+      my ( $filename ) = @_;
+      return if $opts{test};
+      my @dirs = File::Spec->splitdir(dirname($filename));
+      foreach my $i ( 0 .. $#dirs ) {
+         my $dir = File::Spec->catdir(@dirs[0 .. $i]);
+         if ( !$dirs{$dir} ) {
+            if ( ! -d $dir ) {
+               mkdir($dir, 0777);
+            }
+            $dirs{$dir}++;
+         }
+      }
+   }
+}
+
+# This tries to be a 99% solution by quoting Windows arguments with double
+# quotes, and everything else with single quotes. TODO: this does not handle
+# embedded single quotes on Unix or double quotes on Windows.
+# Unix: hell'o is 'hell'\''o'
+sub make_shell_command {
+   my @cmd = @_;
+   my $char = $OSNAME =~ m/MSWin/ ? q{"} : q{'};
+   map {
+      # Don't quote every argument.  We need at least the > and | not to be
+      # quoted for normal operation, and option names should not be quoted.
+      if ( $_ =~ m/[^a-z0-9_.><|-]/ ) {
+         $char . $_ . $char;
+      }
+      else {
+         $_;
+      }
+   } @cmd;
+}
+
+sub system_call {
+   my ( @cmd ) = @_;
+   my $exit_status = 0;
+   my $cmd         = join(' ', make_shell_command(@cmd));
+   if ( $opts{test} ) {
+      print $cmd, "\n";
+   }
+   else {
+      $exit_status = system($cmd);
+      # Must right-shift to get the actual exit status of the command.
+      # Otherwise the upstream exit() call that's about to happen will get a
+      # larger value than it likes, and will just report zero to waitpid().
+      $exit_status = $exit_status >> 8;
+   }
+   return $exit_status;
+}
+
+sub _d {
+   my ( $line ) = (caller(0))[2];
+   print "# main:$line ", @_, "\n";
+}
+
+# ############################################################################
+# Documentation.
+# ############################################################################
+
+=pod
+
+=head1 NAME
+
+mk-parallel-dump - Dump sets of MySQL tables in parallel.
+
+=head1 SYNOPSIS
+
+  mk-parallel-dump
+  mk-parallel-dump --tab --basedir /path/to/backups/
+  mk-parallel-dump --sets order,profile,session --settable meta.backupset
+
+Do not rely on mk-parallel-dump for your backups unless you have tested it.
+You have been warned.
+
+=head1 DESCRIPTION
+
+mk-parallel-dump connects to a MySQL server, finds database and table names,
+and dumps them in parallel for speed.  It can be used in several pre-packaged
+ways, or as a generic wrapper to call some program in parallel, passing it
+parameters for each table.  It supports backup sets and dumping only tables that
+have changed since the last dump.
+
+To dump all tables to gzipped files in the current directory, each database with
+its own directory, with a global read lock, flushing and recording binary log
+positions, each table in a single file:
+
+  mk-parallel-dump
+
+To dump tables elsewhere:
+
+  mk-parallel-dump --basedir /path/to/elsewhere
+
+To dump to tab-separated files with C<SELECT INTO OUTFILE>, each table with
+separate data and SQL files:
+
+  mk-parallel-dump --tab
+
+To dump one or more backup sets (see L<"BACKUP SETS">):
+
+  mk-parallel-dump --sets set1,set2,set3 --settable meta.backupset
+
+To "write your own command line," use C<--> to indicate where the arguments for
+mk-parallel-dump stop and where the arguments for C<mysqldump> (or any other
+program) begin.  The following example shows C<mysqldump>, and aside from
+simpler options to C<mysqldump>, is basically what happens when you specify no
+arguments at all:
+
+  mk-parallel-dump -- mysqldump --skip-lock-tables '%D' '%N' \
+     \| gzip --fast -c - \> '%D.%N.gz'
+
+The C<%> modifiers are macros (see L<"MACROS">).  The C<--skip-lock-tables>
+argument is very important in that last example, because otherwise both
+mk-parallel-dump and C<mysqldump> will lock tables, so C<mysqldump> will hang,
+waiting for the locks.  Notice the shell metacharacters C<|> and C<E<gt>> are
+escaped so the shell won't interpret them, and they'll get passed through to the
+generated command-line.
+
+There's no reason you can't use mk-parallel-dump to do other tasks in
+parallel, such as C<OPTIMIZE TABLE>:
+
+  mk-parallel-dump --noflushlock --nolocktables -- mysqlcheck --optimize '%D' '%N'
+
+When you use built-in defaults, mk-parallel-dump will relay these arguments
+on to every forked copy of C<mysqldump>: L<"--defaults-file">, L<"--host">,
+L<"--port">, L<"--socket">, L<"--user">, L<"--password">.  If you write your own
+command-line, you will need to specify them manually.
+
+If you specify the L<"--tab"> option, mk-parallel-dump creates separate files
+that hold views and triggers, so they can be restored correctly (this is not
+currently possible with the C<mysqldump> from MySQL AB, which will restore
+triggers before restoring data).  Otherwise it does I<not> back up your entire
+database; it dumps tables and data I<only>.  It does not dump view definitions
+or stored routines.  However, if you dump the C<mysql> database, you'll be
+dumping the stored routines anyway.
+
+Exit status is 0 if everything went well, 1 if any chunks failed, and any
+other value indicates an internal error.
+
+mk-parallel-dump doesn't clean out any destination directories before
+dumping into them.  You can move away the old destination, then remove it
+after a successful dump, with a shell script like the following:
+
+   #!/bin/sh
+   CNT=`ls | grep -c old`;
+   if [ -d default ]; then mv default default.old.$CNT;
+   mk-parallel-dump
+   if [ $? != 0 ]
+   then
+      echo "There were errors, not purging old sets."
+   else
+      echo "No errors during dump, purging old sets."
+      rm -rf default.old.*
+   fi
+
+mk-parallel-dump checks whether files have been created before dumping.  If the
+file has been created, it skips the table or chunk that would have created the
+file.  This makes dumps resumable.  If you don't want this behavior, and instead
+you want a full dump, then move away the old files.
+
+=head1 BACKUP SETS
+
+Backup sets are groups of logically related tables you want to backup together.
+You specify a set by inserting the table names into a table in the MySQL server
+from which you're dumping, and then naming it in the L<"--sets"> option.
+mk-parallel-dump always works a set at a time; if you don't specify a set, it
+auto-discovers tables, filters them with the various command-line options
+(L<"--databases">, etc) and considers them the default set.
+
+The table that stores backup sets should have at least these columns: setname,
+priority, db, tbl.  The following is a suggested table structure:
+
+  CREATE TABLE backupset (
+    setname  CHAR(10)  NOT NULL,
+    priority INT       NOT NULL DEFAULT 0,
+    db       CHAR(64)  NOT NULL,
+    tbl      CHAR(64)  NOT NULL,
+    ts       TIMESTAMP NOT NULL,
+    PRIMARY KEY(setname, db, tbl),
+    KEY(setname, priority, db, tbl)
+  );
+
+Entries are ordered by priority, db, and tbl.  Priority 0 tables are dumped
+first, not last.  If it looks like tables are dumped in the wrong order, it's
+probably because they're being dumped asynchronously.  The output is printed
+when the dump finishes, not when it starts.
+
+If you specify L<"--age">, mk-parallel-dump expects the C<ts> column to
+exist, and will update the column to the current date and time when it
+successfully dumps a table.
+
+Don't use C<default> as a set name.  It is used when you don't specify any
+sets and when you want all tables not explicitly assigned to a set to be
+dumped (see L<"--defaultset">).
+
+Set names may contain only lowercase letters, numbers, and underscores.
+
+=head1 CHUNKS
+
+mk-parallel-dump can break your tables into chunks when dumping, and put
+approximately the amount of data you specify into each chunk.  This is useful to
+avoid enormous files for restoration, which can not only take a long time but
+may be a lot of extra work for transactional storage engines like InnoDB.  A
+huge file can create a huge rollback segment in your tablespace.
+
+To dump in chunks, specify the L<"--chunksize"> option.  This option is an
+integer with an optional suffix.  Without the suffix, it's the number of rows
+you want in each chunk.  With the suffix, it's the approximate size of the data.
+
+mk-parallel-dump tries to use index statistics to calculate where the
+boundaries between chunks should be.  If the values are not evenly distributed,
+some chunks can have a lot of rows, and others may have very few or even none.
+Some chunks can exceed the size you want.
+
+When you specify the size with a suffix, the allowed suffixes are k, M and G,
+for kibibytes, mebibytes, and gibibytes, respectively.  mk-parallel-dump
+doesn't know anything about data size.  It asks MySQL (via C<SHOW TABLE STATUS>)
+how long an average row is in the table, and converts your option to a number
+of rows.
+
+Not all tables can be broken into chunks.  mk-parallel-dump looks for an
+index whose leading column is numeric (integers, real numbers, and date and time
+types).  It prefers the primary key if its first column is chunk-able.
+Otherwise it chooses the first chunk-able column in the table.
+
+Generating a series of C<WHERE> clauses to divide a table into evenly-sized
+chunks is difficult.  If you have any ideas on how to improve the algorithm,
+please write to the author (see L<"BUGS">).
+
+=head1 MACROS
+
+mk-parallel-dump can insert C<%> variables into arguments.  The available macros
+are as follows:
+
+  MACRO  MEANING
+  =====  =================
+  %S     The backup set
+  %D     The database name
+  %N     The table name
+  %C     The chunk number
+  %W     The WHERE clause
+
+You can place a number between the C<%> and the letter.  The macro replacement
+then assumes it's a digit and pads it with leading zeroes (in practice, this is
+only useful for C<%C>).
+
+=head1 OUTPUT
+
+Output depends on verbosity.  When L<"--test"> is given, output includes
+commands that would be executed.
+
+When L<"--verbose"> is 0, there is normally no output unless there's an error.
+
+When L<"--verbose"> is 1, there is one line of output for each backup set,
+showing the set, how many tables and chunks were dumped with what status, how
+much time elapsed, and how much time the parallel dump jobs added up to.  A
+final line shows sums for all sets, unless there is only one set.
+
+When L<"--verbose"> is 2, there is also one line of output for each table.
+Each line is printed when a forked "child" process ends and is removed from
+the list of children.  The output shows the backup set, database, table,
+seconds spent dumping, the exit status of the forked dump process, and number
+of current processes (including the one just reaped; so this typically shows
+"how many are running in parallel").  A status of 0 indicates success:
+
+  SET     DATABASE TABLE         TIME STATUS THREADS
+  default mysql    db               0      0       4
+  default mysql    columns_priv     0      0       4
+  default mysql    help_category    0      0       3
+
+=head1 SPEED OF PARALLEL DUMPS
+
+How much faster is it to dump in parallel?  That depends on your hardware and
+data.  You may be able dump files twice as fast, or more if you have lots of
+disks and CPUs.  Here are some user-contributed figures.
+
+The following table is for a 3.6GHz Xeon machine with 4 processors and a RAID-10
+array of 15k disks, directly attached to the server with a fibre channel.  Most
+of the space is in one huge table that wasn't dumped in parallel:
+
+  COMMAND                      SIZE  TIME
+  --------------------------  -----  ----
+  mk-parallel-dump            1.4GB   269
+  mysqldump                   1.4GB   345
+
+On the same machine, in a database with lots of roughly equal-sized tables:
+
+  COMMAND                      SIZE  TIME
+  --------------------------  -----  ----
+  mk-parallel-dump            117MB     7
+  mysqldump                   117MB    37
+
+It doesn't always work that well.  A dual 2.80GHz Xeon server with a RAID-5
+array of three 7200RPM SATA disk drives running MySQL 5.0.38 on GNU/Linux
+achieved the following dump times:
+
+  COMMAND                      SIZE  TIME
+  --------------------------  -----  ----
+  mk-parallel-dump            3.0GB  2596
+  mysqldump | gzip --fast     3.0GB  3195
+
+While dumping two threads in parallel, this machine was at an average of 74%
+CPU utilization and 12% I/O wait.  This machine doesn't have enough disks and
+CPUs to do that many things at once, so it's not going to speed up much.
+
+Dumping lots of tiny tables by forking of lots of C<mysqldump> processes isn't
+usually much faster, because of the overhead of starting C<mysqldump>,
+connecting, inspecting the table, and dumping it.  Note that tab-separated
+dumps are typically much faster and don't suffer as much from the effects of
+many tiny tables, because they're not done via C<mysqldump>.
+
+See also L<http://www.paragon-cs.com/wordpress/?p=52> for a test of parallel
+dumping and restoring.
+
+=head1 DOWNLOADING
+
+You can download Maatkit from Google Code at
+L<http://code.google.com/p/maatkit/>, or you can get any of the tools
+easily with a command like the following:
+
+   wget http://www.maatkit.org/get/toolname
+   or
+   wget http://www.maatkit.org/trunk/toolname
+
+Where C<toolname> can be replaced with the name (or fragment of a name) of any
+of the Maatkit tools.  Once downloaded, they're ready to run; no installation is
+needed.  The first URL gets the latest released version of the tool, and the
+second gets the latest trunk code from Subversion.
+
+=head1 OPTIONS
+
+Some options can be disabled by prefixing them with C<--no>, such as
+C<--no-gzip>.
+
+=over
+
+=item --age
+
+Specifies how 'old' a table must be before mk-parallel-dump will consider
+it.
+
+When L<"--sets"> is not specified, mk-parallel-dump uses C<SHOW TABLE STATUS>
+instead of C<SHOW TABLES> to get a list of tables in each database, and compares
+the time to the C<Update_time> column in the output.  If the C<Update_time>
+column is not C<NULL> and is older than the specified interval ago, it will not
+be dumped.  Thus, it means "dump tables that have changed since X amount of
+time" (presumably the last regular backup).  This means the table will always be
+dumped if it uses InnoDB or another storage engine that doesn't report the
+C<Update_time>.
+
+When L<"--sets"> is specified, the L<"--settable"> table determines when a table
+was last dumped, and the meaning of C<--age> reverses; it becomes "dump tables
+not dumped in X amount of time."
+
+=item --basedir
+
+The directory in which files will be stored.  If you use pre-canned options,
+such as L<"--tab">, mk-parallel-dump knows what the eventual filenames will
+be, and can place all the files in this directory.  It will also create any
+parent directories that don't exist, if needed (see also L<"--umask">).
+
+The default is the current working directory.
+
+If you write your own command line, mk-parallel-dump cannot know which
+arguments in the command line are filenames, and thus doesn't know the
+eventual destination of the dump files.  It does not try to create parent
+directories in this case.
+
+=item --binlogpos
+
+Dump binary log positions from both C<SHOW MASTER STATUS> and C<SHOW SLAVE
+STATUS>, whichever can be retrieved from the server.  The data is dumped to a
+file named F<00_master_data.sql>.  This is done for each backup set.
+
+The file also contains details of each table dumped, including the WHERE clauses
+used to dump it in chunks.
+
+This option is enabled by default.
+
+=item --charset
+
+Enables character set settings in Perl and MySQL.  If the value is C<utf8>, sets
+Perl's binmode on STDOUT to utf8, passes the C<mysql_enable_utf8> option to
+DBD::mysql, and runs C<SET NAMES UTF8> after connecting to MySQL.  Any other
+value sets binmode on STDOUT without the utf8 layer, and runs C<SET NAMES> after
+connecting to MySQL.
+
+=item --chunksize
+
+Specifies that the table should be dumped in segments of approximately the size
+given.  The syntax is either a plain integer, which is interpreted as a number
+of rows per chunk, or an integer with a suffix of G, M, or k, which is
+interpreted as the size of the data to be dumped in each chunk.  See L<"CHUNKS">
+for more details.
+
+=item --csv
+
+Changes L<"--tab"> options so the dump file is in comma-separated values
+(CSV) format.  The SELECT INTO OUTFILE statement looks like the following, and
+can be re-loaded with the same options:
+
+   SELECT * INTO OUTFILE %D.%N.%6C.txt
+   FIELDS TERMINATED BY ',' OPTIONALLY ENCLOSED BY '\"'
+   LINES TERMINATED BY '\n' FROM %D.%N;
+
+This option implies L<"--tab">.
+
+=item --databases
+
+Dump this comma-separated list of databases.
+
+=item --dbregex
+
+Dump only databases whose names match this Perl regular expression.
+
+=item --defaultset
+
+When L<"--sets"> is given, this option makes mk-parallel-dump dump a
+C<default> set consisting of tables not explicitly included in any set.
+
+=item --defaults-file
+
+Only read default options from the given file.  You must give an absolute
+pathname.
+
+=item --flushlock
+
+Lock all tables globally with C<FLUSH TABLES WITH READ LOCK>.  This is enabled
+by default, unless you're dumping sets (see L<"--sets">).  This lock is taken
+once, at the beginning of the whole process, and is never released.
+
+If you want to lock only the tables you're dumping, use L<"--locktables">.  
+
+=item --flushlog
+
+Execute C<FLUSH LOGS> after locking and before dumping master/slave binary log
+positions.  This is done for each backup set.
+
+This option is NOT enabled by default because it causes the MySQL server to
+rotate its error log, potentially overwriting error messages.
+
+=item --gzip
+
+Compresses files with gzip.  This is enabled by default unless your platform is
+Win32.  By default, this causes the standard SQL dumps to be piped to gzip's
+C<STDIN> and the result is redirected to the destination file.  If this option
+isn't enabled, by default C<mysqldump>'s C<--result-file> parameter is used to
+direct the dump to the destination file.  When using L<"--tab">, this option
+causes gzip to be called separately on each resulting file after it is dumped
+(because C<SELECT INTO OUTFILE> cannot be directed to a pipe).
+
+=item --help
+
+Displays a help message.
+
+=item --host
+
+Connect to host.
+
+=item --ignoredb
+
+Do not dump this comma-separated list of databases.
+
+=item --ignoreengine
+
+Do not dump any data for this comma-separated list of storage engines.  The
+schema file will be dumped as usual.
+
+The default value is C<FEDERATED,MRG_MyISAM>.  This prevents dumping data for
+Federated tables and Merge tables.
+
+=item --ignoretbl
+
+Do not dump this comma-separated list of table names.  Table names may be
+qualified with the database name.
+
+=item --locktables
+
+Disables L<"--flushlock"> (unless it was explicitly set) and locks tables with
+C<LOCK TABLES READ>.  Enabled by default when L<"--sets"> is specified.  The
+lock is taken and released with every set of tables dumped.
+
+=item --losslessfp
+
+Wraps double and float types with a call to C<FORMAT()> with 17 digits of
+precision.  According to the comments in Google's patches, this will give
+lossless dumping and reloading in most cases.  (I shamelessly stole this
+technique from them.  I don't know enough about floating-point math to have an
+opinion).
+
+This works only with L<"--tab">.
+
+=item --numthread
+
+Specifies the number of parallel processes to run.  The default is 2 (this is
+mk-parallel-dump, after all -- 1 is not parallel).  On GNU/Linux machines,
+the default is the number of times 'processor' appears in F</proc/cpuinfo>.  On
+Windows, the default is read from the environment.  In any case, the default is
+at least 2, even when there's only a single processor.
+
+=item --password
+
+Password to use when connecting.
+
+=item --port
+
+Port number to use for connection.
+
+=item --progress
+
+Print progress messages.
+
+Progress is displayed each time a table or chunk of a table finishes dumping,
+assuming all chunks are created equal.  The output is the completed and total
+chunks, the percent completed, estimated time remaining, and estimated
+completion time.
+
+=item --quiet
+
+Sets L<"--verbose"> to 0.
+
+=item --sets
+
+Dump this comma-separated list of backup sets, in order.  Requires
+L<"--settable">.  See L<"BACKUP SETS">.  The special C<default> set is
+reserved; don't use it as a set name.
+
+=item --setperdb
+
+Specifies that each database is a separate backup set.  Each set is named the
+same as the database.  Implies L<"--locktables">.
+
+=item --settable
+
+Specifies the table in which backup sets are kept.  It may be given in
+database.table form.
+
+=item --setvars
+
+Specify any variables you want to be set immediately after connecting to MySQL.
+These will be included in a C<SET> command.
+
+=item --socket
+
+Socket file to use for connection.
+
+=item --stopslave
+
+Issue C<STOP SLAVE> on server before dumping data.  This ensures that the data
+is not changing during the dump.  Issues C<START SLAVE> after the dump is
+complete.
+
+If the slave is not running, throws an error and exits.  This is to prevent
+possibly bad things from happening if the slave is not running because of a
+problem, or because someone intentionally stopped the slave for maintenance or
+some other purpose.
+
+=item --tab
+
+Dump via C<SELECT INTO OUTFILE>, which is similar to what C<mysqldump> does with
+the C<--tab> option, but you're not constrained to a single database at a time.
+
+Before you use this option, make sure you know what C<SELECT INTO OUTFILE> does!
+I recommend using it only if you're running mk-parallel-dump on the same
+machine as the MySQL server, but there is no protection if you don't.
+
+The files will be gzipped after dumping if L<"--gzip"> is enabled.  This option
+sets L<"--umask"> to zero so auto-created directories are writable by the MySQL
+server.
+
+Triggers are dumped into C<.trg> files, and views are postponed until the end of
+the dump, then dumped all together into the C<00_views.sql> file.  This allows
+restoring data before the triggers, which is important for restoring data
+accurately.  Views must be postponed until the end and dumped together so they
+can be restored correctly; interdependencies between views and tables may
+prevent correct restoration otherwise.
+
+=item --tables
+
+Dump this comma-separated list of table names.  Table names may be qualified
+with the database name.
+
+=item --tblregex
+
+Dump only tables whose names match this Perl regular expression.
+
+=item --test
+
+Print commands instead of executing them.
+
+=item --umask
+
+Set the program's C<umask> to this octal value.  This is useful when you want
+created files and directories to be readable or writable by other users (for
+example, the MySQL server itself).
+
+=item --user
+
+User for login if not current user.
+
+=item --verbose
+
+Sets the verbosity; repeatedly specifying it increments the verbosity.
+Default is 1 if not specified.  See L<"OUTPUT">.
+
+=item --version
+
+Output version information and exit.
+
+=item --wait
+
+If the MySQL server crashes during dumping, waits until the server comes back
+and then continues with the rest of the tables.  C<mk-parallel-dump> will
+check the server every second until this time is exhausted, at which point it
+will give up and exit.
+
+This implements Peter Zaitsev's "safe dump" request: sometimes a dump on a
+server that has corrupt data will kill the server.  mk-parallel-dump will
+wait for the server to restart, then keep going.  It's hard to say which table
+killed the server, so no tables will be retried.  Tables that were being
+concurrently dumped when the crash happened will not be retried.  No additional
+locks will be taken after the server restarts; it's assumed this behavior is
+useful only on a server you're not trying to dump while it's in production.
+
+=back
+
+=head1 ENVIRONMENT
+
+The environment variable C<MKDEBUG> enables verbose debugging output in all of
+the Maatkit tools:
+
+   MKDEBUG=1 mk-....
+
+=head1 SYSTEM REQUIREMENTS
+
+You need Perl, DBI, DBD::mysql, and some core packages that ought to be
+installed in any reasonably new version of Perl.
+
+This program works best on GNU/Linux.  Filename quoting might not work well on
+Microsoft Windows if you have spaces or funny characters in your database or
+table names.
+
+=head1 BUGS
+
+Please use Google Code Issues and Groups to report bugs or request support:
+L<http://code.google.com/p/maatkit/>.
+
+Please include the complete command-line used to reproduce the problem you are
+seeing, the version of all MySQL servers involved, the complete output of the
+tool when run with L<"--version">, and if possible, debugging output produced by
+running with the C<MKDEBUG=1> environment variable.
+
+=head1 COPYRIGHT, LICENSE AND WARRANTY
+
+This program is copyright (c) 2007 Baron Schwartz.  Feedback and improvements
+are welcome.
+
+THIS PROGRAM IS PROVIDED "AS IS" AND WITHOUT ANY EXPRESS OR IMPLIED
+WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED WARRANTIES OF
+MERCHANTIBILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+
+This program is free software; you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, version 2; OR the Perl Artistic License.  On UNIX and similar
+systems, you can issue `man perlgpl' or `man perlartistic' to read these
+licenses.
+
+You should have received a copy of the GNU General Public License along with
+this program; if not, write to the Free Software Foundation, Inc., 59 Temple
+Place, Suite 330, Boston, MA  02111-1307  USA.
+
+=head1 AUTHOR
+
+Baron Schwartz.
+
+=head1 SEE ALSO
+
+See also L<mk-parallel-restore>.
+
+=head1 VERSION
+
+This manual page documents Ver 1.0.9 Distrib 2152 $Revision: 2142 $.
+
+=cut

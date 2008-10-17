@@ -1,0 +1,1299 @@
+
+Changelog for mk-archiver:
+
+2008-08-11: version 1.0.10
+
+   * Files downloaded directly from SVN crashed due to version information.
+   * Added more information to --statistics and changed --whyquit slightly.
+
+2008-06-02: version 1.0.9
+
+   * Updated common code.
+
+2008-03-16: version 1.0.8
+
+   * Added --setvars option (bug #1904689, bug #1911371).
+   * Added --charset option (bug #1877548).
+   * Changed short form of --analyze to -Z to avoid conflict with --charset.
+
+2008-01-24: version 1.0.7
+
+   * Added --quiet option.
+   * Added --plugin option.  The plugin interface is not backwards compatible.
+   * Added --bulkins option.
+   * Added --bulkdel option.
+   * Added --nodelete option.
+   * Changed negatable --ascend option to --noascend.
+
+2008-01-05: version 1.0.6
+
+   * Made suffixes for time options optional (bug #1858696).
+
+2007-12-16: version 1.0.5
+
+   * Updated common code.
+
+2007-12-07: version 1.0.4
+
+   * Updated common code.
+
+2007-11-12: version 1.0.3
+
+   * The --no-ascend option caused too many bind variables to be used.
+
+2007-11-04: version 1.0.2
+
+   * Made command-line help easier to use.
+   * Removed the dependency on Term::ReadKey.
+   * Replaced some code with modules that are unit-tested.
+   * You can control binary logging with the 'a' and 'b' options in a DSN.
+   * Destination plugins can now rewrite the INSERT statement.
+
+2007-08-23: version 1.0.1
+
+   * MySQL socket connection option didn't work.
+   * Added --askpass option.
+
+2007-07-26: version 1.0.0
+
+   * Added --safeautoinc option, enabled by default, to protect against re-using
+     auto-increment values.
+
+2007-07-20: version 0.9.4
+
+   * Made --time suffix optional.
+   * Added --statistics option to gather and print timing statistics.
+   * Added signal handling so mk-archiver exits cleanly when it can.
+   * Changed exit status to 0 when --help is given.
+   * Out-of-column-order primary keys were not ascended correctly.
+
+2007-06-22: version 0.9.3
+
+   Changes:
+   * Added more hooks for plugins before and after archiving.
+   * Documentation.
+   * Made --time suffix optional.
+
+   Bugs fixed:
+   * mk-archiver could crash on a lock wait timeout when --txnsize was not set
+
+2007-06-09: version 0.9.2
+
+   Changes:
+   * Added --stop option.
+   * Added standard --version command-line option.
+   * Added --skipfkchk.
+   * Added a plugin mechanism to give arbitrary Perl code hooks into the archiving process.
+
+   Bugs fixed:
+   * Old versions of DBD::mysql do not quote identifiers correctly.
+   * Old versions of Perl cannot handle the syntax "print $file func()".
+   * Indexes on column prefixes were not parsed correctly.
+
+2007-06-06: version 0.9.1
+
+   Changes:
+   * --where is now a required option.
+   * Command-line parsing is strict to help catch mis-quoted --where.
+   * Added --commit-each, --ascend and --ascendfirst options.
+
+   Bugs fixed:
+   * WHERE clause was not isolated in parentheses.
+   * The ascending index WHERE clause was not properly parenthesized.
+   * Rows could be skipped while ascending a multi-column primary key.
+
+2007-06-06: version 0.9.0
+
+   * Initial release
+
+Changelog for mk-audit:
+
+2008-08-11: version 0.9.1
+
+   * Files downloaded directly from SVN crashed due to version information.
+   * Added useful functionality.
+
+2008-06-02: version 0.9.0
+
+   * Initial release.
+
+Changelog for mk-deadlock-logger:
+
+2008-08-11: version 1.0.11
+
+   * Files downloaded directly from SVN crashed due to version information.
+
+2008-06-02: version 1.0.10
+
+   * Generate command-line options from POD.
+
+2008-03-16: version 1.0.9
+
+   * Added --setvars option (bug #1904689, bug #1911371).
+   * Added 'A' part to DSNs (bug #1877548).
+
+2008-01-05: version 1.0.8
+
+   * Made suffixes for time options optional (bug #1858696).
+
+2007-12-16: version 1.0.7
+
+   * Updated common code.
+
+2007-12-07: version 1.0.6
+
+   * Updated common code.
+
+2007-11-04: version 1.0.5
+
+   * Made command-line help easier to use.
+   * Removed the dependency on Term::ReadKey.
+   * Replaced some code with modules that are unit-tested.
+
+2007-09-20: version 1.0.4
+
+   * Added --interval, --time, and --daemonize options, and signal handling.
+   * --askpass did not allow different passwords on --source and --dest.
+
+2007-08-23: version 1.0.3
+
+   * MySQL socket connection option didn't work.
+   * Added --askpass option.
+   * Truncated output could crash on an undefined regex result.
+   * Made --source and --dest accept bareword hostnames.
+   * Made DBI errors only print once.
+
+2007-06-22: version 1.0.2
+
+   Incompatible changes:
+   * Changed the format of the --source and --dest options.
+
+   Changes:
+   * Documentation.
+
+2007-06-10: version 1.0.1
+
+   * MySQL 5.1 shows tables in db.tbl format, not db/tbl in record locks.
+   * Added --defaults-file option.
+   * Added standard --version command-line option.
+
+2007-03-25: version 1.0.0
+
+   * Rewrite the GetOpt::Long code and rely on DBD to read MySQL option files.
+
+2007-03-13: version 0.9.0
+
+   * Fix a couple spots where InnoDB output parsing failed and caused a crash.
+
+2007-03-08: version 0.8.0
+
+   * Initial release
+
+Changelog for mk-duplicate-key-checker:
+
+2008-08-11: version 1.1.7
+
+   * Files downloaded directly from SVN crashed due to version information.
+   * Full-text indexes were not treated specially (issue 10).
+
+2008-06-02: version 1.1.6
+
+   * Updated common code.
+
+2008-03-16: version 1.1.5
+
+   * Added --setvars option (bug #1904689, bug #1911371).
+   * Added --charset option (bug #1877548).
+
+2007-12-16: version 1.1.4
+
+   * --tables and --ignoretables now accept names in the form db.tbl.
+
+2007-12-07: version 1.1.3
+
+   * Updated common code.
+   * Corrected documentation.
+   * Added --engine and --ignoreengine options.
+
+2007-11-04: version 1.1.2
+
+   * Made command-line help easier to use.
+   * Removed the dependency on Term::ReadKey.
+   * Replaced some code with modules that are unit-tested.
+
+2007-09-20: version 1.1.1
+
+   * Exit code wasn't always defined.
+
+2007-09-01: version 1.1.0
+
+   * Column printout was misaligned one space.
+   * Refactored into a runnable module and added tests.
+   * Redundant indexes were only detected if the shorter index was first.
+   * Redundant foreign keys sometimes weren't detected.
+   * All indexes on MEMORY tables were reported as HASH.
+   * Added --clustered option to report appended PK columns as dupes for InnoDB and solidDB.
+
+2007-08-23: version 1.0.5
+
+   * MySQL socket connection option didn't work.
+   * Added --askpass option.
+
+2007-06-22: version 1.0.4
+
+   * Documentation.
+
+2007-06-10: version 1.0.3
+
+   * Added --defaults-file option.
+   * Added standard --version command-line option.
+
+2007-03-25: version 1.0.2
+
+   * Rewrite the GetOpt::Long code and rely on DBD to read MySQL option files.
+   * Error handling if there aren't permissions to run SHOW CREATE TABLE on a
+     view.
+   * Documentation copy/paste error.
+
+2007-03-02: version 1.0.1
+
+   * Fixed several small bugs with quoting
+   * Fixed bugs with index types (FULLTEXT, HASH etc)
+   * Add --allatonce option
+
+2007-03-01: version 1.0.0
+
+   * Initial release.
+
+Changelog for mk-find:
+
+2008-08-11: version 0.9.12
+
+   * Files downloaded directly from SVN crashed due to version information.
+   * Added --exec_dsn so you can execute SQL on a different server.
+
+2008-06-02: version 0.9.11
+
+   * Updated common code.
+
+2008-03-16: version 0.9.10
+
+   * Added --setvars option (bug #1904689, bug #1911371).
+   * Added --charset option (bug #1877548).
+
+2007-12-16: version 0.9.9
+
+   * Updated common code.
+
+2007-12-07: version 0.9.8
+
+   * Updated common code.
+
+2007-11-25: version 0.9.7
+
+   * Added --sid option.
+
+2007-11-04: version 0.9.6
+
+   * Made command-line help easier to use.
+   * Removed the dependency on Term::ReadKey.
+   * Replaced some code with modules that are unit-tested.
+
+2007-10-03: version 0.9.5
+
+   * The --dbregex parameter didn't work right.
+
+2007-08-23: version 0.9.4
+
+   * MySQL socket connection option didn't work.
+   * Added --askpass option.
+
+2007-06-22: version 0.9.3
+
+   * Documentation.
+
+2007-06-10: version 0.9.2
+
+   * --pid had a race condition.
+   * Unrecognized --sprintf directives could cause crashes.
+   * Added --defaults-file option.
+   * Added standard --version command-line option.
+
+2007-05-09: version 0.9.1
+
+   * Added --host command-line option.  Oops.
+
+2007-05-08: version 0.9.0
+
+   * Initial release.
+
+Changelog for mk-heartbeat:
+
+2008-08-11: version 1.0.10
+
+   * Files downloaded directly from SVN crashed due to version information.
+
+2008-06-02: version 1.0.9
+
+   * Get command-line options from POD.
+   * --check output contained leading whitespace which broke Cacti.
+
+2008-03-16: version 1.0.8
+
+   * Added --setvars option (bug #1904689, bug #1911371).
+   * Added --charset option (bug #1877548).
+
+2008-02-10: version 1.0.7
+
+   * Added --recurse option to check slaves to any depth.
+   * Made mk-heartbeat explicitly close DB connection when done.
+
+2008-01-05: version 1.0.6
+
+   * Made suffixes for time options optional (bug #1858696).
+
+2007-12-27: version 1.0.5
+
+   * Added --stop, --sentinel, and --quiet options.
+   * Added --replace option.
+
+2007-12-16: version 1.0.4
+
+   * Updated common code, added debugging.
+
+2007-12-07: version 1.0.3
+
+   * Updated common code.
+   * Added --time, --interval and --skew options.
+   * The combination of sleep() and alarm() did not work on some systems.
+
+2007-11-04: version 1.0.2
+
+   * Made command-line help easier to use.
+   * Removed the dependency on Term::ReadKey.
+   * Added support for PostgreSQL with the --dbidriver option.
+   * Replaced some code with modules.
+
+2007-10-03: version 1.0.1
+
+   * --check hung forever.
+
+2007-09-20: version 1.0.0
+
+   * Initial release.
+
+Changelog for mk-parallel-dump:
+
+2008-08-11: version 1.0.9
+
+   * Files downloaded directly from SVN crashed due to version information.
+   * Added --progress option.
+   * CHANGE MASTER TO in 00_master_data.sql used the I/O thread position.
+   * Added features to permit resuming of dumps.
+   * --age without --sets did the opposite of what it should (isssue 7)
+   * --stopslave died after complaining the slave was not running.
+
+2008-06-02: version 1.0.8
+
+   * System commands did not use double quotes on Windows (bug #1949922).
+   * Added --stopslave to run STOP SLAVE during the dump (bug #1923627).
+   * --ignoreengine worked only when --tab was specified (bug #1851461).
+
+2008-03-16: version 1.0.7
+
+   * Added --setvars option (bug #1904689, bug #1911371).
+   * Added --charset option (bug #1877548).
+   * A global database connection was re-used by children, causing a hang.
+
+2008-02-10: version 1.0.6
+
+   * Added the --losslessfp option.
+   * Fixed child process exit status on Solaris (bug #1886444).
+
+2008-01-24: version 1.0.5
+
+   * The fix for bug #1863949 added an invalid argument to gzip (bug #1866137)
+   * --quiet caused a crash.
+
+2008-01-05: version 1.0.4
+
+   * Second and later chunks had DROP/CREATE TABLE (bug #1863949).
+   * Made suffixes for time options optional (bug #1858696).
+   * --locktables didn't disable --flushlock.
+
+2007-12-27: version 1.0.3
+
+   * Views with functions caused a crash (bug #1850998, MySQL bug #29408).
+   * --ignoreengine was ignored (bug #1851461).
+
+2007-12-16: version 1.0.2
+
+   * Added debugging.
+   * Updated common code.
+   * --tables and --ignoretables now accept names in the form db.tbl.
+
+2007-12-07: version 1.0.1
+
+   * Updated common code.
+
+2007-11-12: version 1.0.0
+
+   * Dump views when --tab is given.
+   * Use a module to find databases and tables.
+   * Do not shell out to mysqldump for --tab.
+   * Removed the --opt option.
+   * Check for valid options to mysqldump.
+   * Dump table definition and triggers separately for --tab.
+
+2007-11-04: version 0.9.11
+
+   * Made command-line help easier to use.
+   * Removed the dependency on Term::ReadKey.
+   * Replaced some code with modules that are unit-tested.
+   * Added --ignoreengine command-line option.
+   * Do not dump data for Federated or Merge tables by default.
+   * Some versions of mysqldump tried to do LOCK TABLES and hung.
+
+2007-10-15: version 0.9.10
+
+   * ANSI_QUOTES SQL_MODE or SQL_QUOTE_SHOW_CREATE0= could cause an error.
+   * Disabled --flushlog by default so error log doesn't get trashed.
+
+2007-10-09: version 0.9.9
+
+   * Table and database names were not quoted in arguments to mysqldump.
+   * LOCK TABLES not inside transaction caused infinite wait (see http://bugs.mysql.com/31479)
+   * Made exit status 1 if any errors, 0 if successful.
+
+2007-10-05: version 0.9.8
+
+   * Added --setperdb option.
+   * Print each chunk's details to 00_master_data.sql file.
+   * Do locking and list-building as late as possible for efficiency.
+   * Error handling.
+
+2007-10-03: version 0.9.6
+
+   * Arguments to external program weren't honored.
+   * System exit codes were lost, so errors weren't reported.
+   * Added chunking.
+   * Modularized and tested.
+   * Added documentation.
+   * Made --locktables negatable.
+   * Changed default output to be less verbose and added --verbose option.
+   * Added summary output.
+
+2007-10-01: version 0.9.5
+
+   * Initial release.
+
+Changelog for mk-parallel-restore:
+
+2008-08-11: version 1.0.8
+
+   * Files downloaded directly from SVN crashed due to version information.
+   * Added --progress option.
+
+2008-06-02: version 1.0.7
+
+   * .trg files were sometimes rejected from loading.
+   * Command-line options are generated from the POD.
+
+2008-03-16: version 1.0.6
+
+   * Added --setvars option (bug #1904689, bug #1911371).
+   * Changed --charset to be compatible with other tools (bug #1877548).
+
+2008-02-10: version 1.0.5
+
+   * Fixed forking issues with File::Find on Solaris (bug #1887102).
+   * Fixed child process exit status on Solaris (bug #1886444).
+   * The --defaults-file option caused a mysql error (bug #1886866).
+
+2008-01-24: version 1.0.4
+
+   * The -D option was used as a default DB for the connection (bug #1870415).
+
+2008-01-05: version 1.0.3
+
+   * Made suffixes for time options optional (bug #1858696).
+   * --ignoretables was ignored.
+
+2007-12-16: version 1.0.2
+
+   * Updated common code.
+
+2007-12-07: version 1.0.1
+
+   * Updated common code.
+
+2007-11-12: version 1.0.0
+
+   * Removed the --sql option, as sort order is implied when --tab is given.
+   * Added code to load .trg files (triggers) and load 00_views files.
+   * Print out files that are not loaded.
+
+2007-11-04: version 0.9.1
+
+   * Made command-line help easier to use.
+   * Optimized the calls to CREATE DATABASE with the --createdb argument.
+   * Removed the dependency on Term::ReadKey.
+   * CHARACTER SET was added to LOAD DATA INFILE even before MySQL 5.0.38.
+   * Replaced some code with modules that are unit-tested.
+   * Fixed documentation formatting errors.
+
+2007-10-15: version 0.9.0
+
+   * Initial release.
+
+Changelog for mk-query-profiler and mk-profile-compact:
+
+2008-08-11: version 1.1.11
+
+   * Files downloaded directly from SVN crashed due to version information.
+
+2008-06-02: version 1.1.10
+
+   * Generate command-line options from POD.
+
+2008-03-16: version 1.1.9
+
+   * Added --setvars option (bug #1904689, bug #1911371).
+   * Added --charset option (bug #1877548).
+
+2007-12-16: version 1.1.8
+
+   * Updated common code, added debugging.
+
+2007-12-07: version 1.1.7
+
+   * Updated common code.
+   * Added --session command-line option.
+   * Servers without session variables crashed the tool (bug #1840320).
+   * The meaning of --innodb was reversed.
+
+2007-11-04: version 1.1.6
+
+   * Made command-line help easier to use.
+   * Removed the dependency on Term::ReadKey.
+   * Replaced some code with modules that are unit-tested.
+
+2007-09-20: version 1.1.5
+
+   * Documentation didn't specify how queries in FILE are separated.
+
+2007-09-01: version 1.1.4
+
+   * SHOW STATUS inconsistencies after a FLUSH were skewing status.
+
+2007-08-23: version 1.1.3
+
+   * MySQL socket connection option didn't work.
+   * Large queries overflowed the formatting room available.
+
+2007-06-22: version 1.1.2
+
+   * Documentation
+
+2007-06-10: version 1.1.1
+
+   * Added --defaults-file option.
+   * Added standard --version command-line option.
+   * Added --defaults-file option.
+
+2007-04-05: version 1.1.0
+
+   * Profile "Potential filesorts".
+   * Allow to read STDIN, many files possible.
+   * Allow to execute other programs in --external mode.
+   * Make columns always have headings for consistency and scriptability.
+   * Add mk-profile-compact helper tool.
+
+2007-04-01: version 1.0.3
+
+   * Profile Bytes_received and Bytes_sent.
+   * Add --external option so you can profile another program without running its queries.
+   * Fix commandline options: change --flush and --verbose, and change --debug to --verify.
+   * Fix behavior of --calibrate.  It was not calibrating by default.  This was
+     making things look too expensive.
+   * More documentation.
+
+2007-03-25: version 1.0.2
+
+   * Rewrite the GetOpt::Long code and rely on DBD to read MySQL option files.
+   * Documentation.
+
+2007-03-02: version 1.0.1
+
+   * Fix prompting
+
+2007-03-01: version 1.0.0
+
+   * Initial re-release on Sourceforge.
+   * A lot of improvements as I've learned more about coding :-)
+
+Changelog for mk-show-grants:
+
+2008-08-11: version 1.0.11
+
+   * Files downloaded directly from SVN crashed due to version information.
+   * Anonymous users were not permitted (issue 28).
+
+2008-06-02: version 1.0.10
+
+   * Create command-line options from POD.
+
+2008-03-16: version 1.0.9
+
+   * Added --setvars option (bug #1904689, bug #1911371).
+   * Added --charset option (bug #1877548).
+
+2008-02-10: version 1.0.8
+
+   * Added --timestamp option.
+
+2007-12-16: version 1.0.7
+
+   * Updated common code, added debugging.
+
+2007-12-07: version 1.0.6
+
+   * Updated common code.
+
+2007-11-25: version 1.0.5
+
+   * --askpass ignored the entered password (bug #1838131).
+
+2007-11-04: version 1.0.4
+
+   * Made command-line help easier to use.
+   * Removed the dependency on Term::ReadKey.
+   * Replaced some code with modules that are unit-tested.
+
+2007-08-23: version 1.0.3
+
+   * MySQL socket connection option didn't work.
+   * Added --askpass option.
+
+2007-06-22: version 1.0.2
+
+   * Documentation.
+
+2007-06-10: version 1.0.1
+
+   * Added --defaults-file option.
+   * Added standard --version command-line option.
+   * Added --defaults-file option.
+
+2007-03-25: version 1.0.0
+
+   * Rewrite the GetOpt::Long code and rely on DBD to read MySQL option files.
+   * Fix the --revoke and --separate options so revokes are not separate unless
+     specified.  Add REVOKE GRANT OPTION when the user has it.
+
+2007-03-19: version 0.9.1
+
+   * Added --separate, --drop, --revoke and --flush options.
+
+2007-03-17: version 0.9.0
+
+   * Initial release.
+
+Changelog for mk-slave-delay:
+
+2008-08-11: version 1.0.8
+
+   * Files downloaded directly from SVN crashed due to version information.
+
+2008-06-02: version 1.0.7
+
+   * Updated the documentation to use POD.
+   * The slave could wait forever if the I/O thread was stopped.
+   * The slave could wait forever on the master's last event (bug #1959496).
+
+2008-03-16: version 1.0.6
+
+   * Added --setvars option (bug #1904689, bug #1911371).
+   * Added 'A' part to DSNs (bug #1877548).
+
+2008-01-05: version 1.0.5
+
+   * Made suffixes for time options optional (bug #1858696).
+   * The program was ignoring some connection parameters.
+   * Made the program use master when the I/O thread waits for relay log space.
+
+2007-12-16: version 1.0.4
+
+   * Updated common code, added debugging.
+
+2007-12-07: version 1.0.3
+
+   * Updated common code.
+
+2007-11-04: version 1.0.2
+
+   * Made command-line help easier to use.
+   * Removed the dependency on Term::ReadKey.
+   * Replaced some code with modules that are unit-tested.
+
+2007-09-20: version 1.0.1
+
+   * Added a --daemonize option to detach from the shell and run in the background.
+
+2007-08-23: version 1.0.0
+
+   * MySQL socket connection option didn't work.
+   * Added a check that the server is a slave.
+
+2007-08-04: version 0.9.0
+
+   * Initial release.
+
+Changelog for mk-slave-find:
+
+2008-08-11: version 1.0.2
+
+   * Files downloaded directly from SVN crashed due to version information.
+
+2008-06-02: version 1.0.1
+
+   * Updated common code.
+
+2008-03-16: version 1.0.0
+
+   * Initial release.
+
+Changelog for mk-slave-move:
+
+2008-08-11: version 0.9.2
+
+   * The -m option was not recognized as an alias for --timeout.
+   * Files downloaded directly from SVN crashed due to version information.
+
+2008-06-02: version 0.9.1
+
+   * Command-line parsing was removing an expected DSN (bug #1960142).
+   * The slave was not stopped before CHANGE MASTER TO (bug #1960142).
+   * DSNs without a port caused a crash (bug #1960142).
+   * Converted to use POD for command-line options.
+
+2008-03-16: version 0.9.0
+
+   * Initial release.
+
+Changelog for mk-slave-prefetch:
+
+2008-08-11: version 1.0.3
+
+   * Files downloaded directly from SVN crashed due to version information.
+   * Added the --numprefix option for use in sharded data stores.
+   * The Rotate binary log event type was not handled.
+
+2008-06-02: version 1.0.2
+
+   * Add the --progress option.
+   * Add more error reporting and the --errors option.
+   * Abstract USE queries when fingerprinting them.
+   * mysqlbinlog errors were not detected.
+   * Handle queries of the form INSERT ... VALUE().
+   * Strip comments from queries when normalizing them.
+
+2008-03-16: version 1.0.1
+
+   * Added --setvars option (bug #1904689, bug #1911371).
+   * Added --charset option (bug #1877548).
+
+2008-01-24: version 1.0.0
+
+   * Initial release.
+
+Changelog for mk-slave-restart:
+
+2008-08-11: version 1.0.8
+
+   * Files downloaded directly from SVN crashed due to version information.
+
+2008-06-02: version 1.0.7
+
+   * Updated common code.
+
+2008-03-16: version 1.0.6
+
+   * Added --setvars option (bug #1904689, bug #1911371).
+   * Added --charset option (bug #1877548).
+   * Added logic to repair tables, and rewrote a lot of code.
+   * Added --always option, disabled by default.  Not backwards compatible.
+   * --daemonize did not work.
+   * --quiet caused an undefined variable error.
+
+2008-01-05: version 1.0.5
+
+   * Made suffixes for time options optional (bug #1858696).
+   * Added logic to discard corrupt relay logs.
+   * Added --monitor, --sentinel, and --stop.
+   * Added --quiet and changed --verbose to 1 by default.
+   * Added the ability to monitor many servers with --recurse.
+
+2007-12-16: version 1.0.4
+
+   * Updated common code, added debugging.
+
+2007-12-07: version 1.0.3
+
+   * Updated common code.
+
+2007-11-04: version 1.0.2
+
+   * Made command-line help easier to use.
+   * Removed the dependency on Term::ReadKey.
+   * Replaced some code with modules that are unit-tested.
+
+2007-09-20: version 1.0.1
+
+   * Added a --daemonize option to detach from the shell and run in the background.
+
+2007-08-23: version 1.0.0
+
+   * MySQL socket connection option didn't work.
+   * Added --askpass option.
+
+2007-08-04: version 0.9.3
+
+   * Fixed a crash caused by omitting --verbose.
+   * Changed exit status to 0 when --help is given.
+
+2007-07-05: version 0.9.2
+
+   * Initial release.
+
+Changelog for mk-table-checksum and mk-checksum-filter:
+
+2008-08-11: version 1.1.28
+
+   * Files downloaded directly from SVN crashed due to version information.
+
+2008-06-02: version 1.1.27
+
+   * Update documentation, generate command-line options from POD.
+   * Added --trim to compare pre-5.0 and 5.0+ VARCHAR values consistently.
+
+2008-03-16: version 1.1.26
+
+   * Added --setvars option (bug #1904689, bug #1911371).
+   * Added 'A' part to DSNs (bug #1877548).
+   * Added --unique option to mk-checksum-filter.
+   * The exit status from mk-checksum-filter was always 0.
+   * mk-table-checksum now prefers to discover slaves via SHOW PROCESSLIST.
+
+2008-02-10: version 1.1.25
+
+   * The --lock option did not work correctly (bug #1884712).
+
+2008-01-05: version 1.1.24
+
+   * Added support for the FNV_64 UDF, which is distributed with Maatkit.
+   * --emptyrepltbl didn't Do The Right Thing by default.
+   * --explain didn't disable --emptyrepltbl
+   * Made suffixes for time options optional (bug #1858696).
+   * The --float-precision option was ignored.
+   * (mk-checksum-filter) -i, -d options worked only on multiple files.
+
+2007-12-27: version 1.1.23
+
+   * Updated documentation about version compatibility.
+   * Updated documentation for --replcheck.
+
+2007-12-16: version 1.1.22
+
+   * --replicate did not store chunk boundaries correctly (bug #1850243).
+   * --tables and --ignoretables now accept names in the form db.tbl.
+
+2007-12-07: version 1.1.21
+
+   * Updated common code.
+   * --chunksize was broken when no suffix given (bug #1845018).
+   * --replcheck replaces the --recursecheck option (bug #1841407).
+
+2007-11-25: version 1.1.20
+
+   * --replcheck didn't recurse; it should recurse one level (to slaves).
+
+2007-11-18: version 1.1.19
+
+   * Check for needed privileges on --replicate table before beginning.
+   * Made some error messages more informative.
+   * Fixed child process exit status with 8-bit right-shift.
+   * Improved checksumming code auto-detects best algorithm and function.
+   * Added --ignoreengine option; ignores federated and merge by default.
+   * Added --columns and --checksum options.
+   * Removed --chunkcol, --chunksize-exact, --index options.
+   * --chunksize can be specified as a data size now.
+   * Improved chunking algorithm handles more cases and uses fewer chunks.
+   * Do not print --replcheck results for servers that are not slaves.
+   * Create only one DB connection for each host, not one per host/tbl/chunk.
+   * Code assumed backtick quoting, broke on SQL_MODE=ANSI (bug #1813030).
+   * There were many potential bugs with database and table name quoting.
+   * Child exit status errors could be masked by subsequent successes.
+
+2007-11-12: version 1.1.18
+
+   * DSN Parsing was broken.
+
+2007-11-04: version 1.1.17
+
+   * Made command-line help easier to use.
+   * Removed the dependency on Term::ReadKey.
+   * Replaced some code with modules that are unit-tested.
+
+2007-10-01: version 1.1.16
+
+   * Made mk-checksum-filter able to compare tables in different databases.
+
+2007-09-20: version 1.1.15
+
+   * The CHECKSUM strategy was always disabled.
+
+2007-09-01: version 1.1.14
+
+   * Added documentation about the storage engine for the checksum table.
+   * The --replcheck option now checks the server and its slaves.
+
+2007-08-23: version 1.1.13
+
+   * MySQL socket connection option didn't work.
+   * Added --askpass option.
+
+2007-07-26: version 1.1.12
+
+   * mk-table-checksum could crash when it tried to checksum on a table that
+     was removed.
+
+2007-07-20: version 1.1.11
+
+   * Added --replcheck option to check --replicate results on slaves.
+   * Added --recursecheck option to do --replcheck recursively.
+
+2007-07-10: version 1.1.10
+
+   * Handle malformed values that will return undef start and end points in
+     chunking.
+   * Updated documentation's example query to be run on the slave.
+
+2007-07-10: version 1.1.9
+
+   Changes:
+   * Enabled chunking on FLOAT, DOUBLE and DECIMAL columns.
+
+   Bugs fixed:
+   * mk-table-checksum crashed when EXPLAIN said an empty table had rows.
+   * mk-table-checksum failed to find rows on slaves that didn't exist
+     on the master.
+   * Changed from BETWEEN to WHERE clauses.
+
+2007-06-22: version 1.1.8
+
+   Changes:
+   * Documentation.
+   * Support complex host definitions.
+   * Added --explainhosts option to debug host definitions.
+   * Added --explain option.
+   * When exact chunking is impossible, mk-table-checksum will use approximate.
+
+   Incompatible changes:
+   * Added required 'boundaries' column to checksum table for --replicate.
+
+   Bugs fixed:
+   * Chunking on temporal types defeated indexes.
+
+2007-06-10: version 1.1.7
+
+   * Added --defaults-file option.
+   * Added standard --version command-line option.
+
+2007-06-03: version 1.1.6
+
+   Incompatible changes:
+   * The chunking functionality no longer guarantees chunks will be no larger
+     than the specified size.  Use --chunksize-exact for that.  Note that the
+     chunking functionality is still experimental and likely to change further.
+
+   Changes:
+   * Chunking now works with multiple-column indexes.
+   * Added --quiet option, useful for cron jobs with --replicate.
+   * Added --float-precision option; works around different floating-point formats.
+   * Added --sleep-coef option; sleeps a multiple of the time the last checksum took.
+   * Added error handling for tables that are dropped during checksumming.
+   * Added documentation on the finer points of --replicate-do and --binlog-do.
+
+   Bugs fixed:
+   * There was a race condition between listing and checksumming tables.
+   * Perl's auto-vivify hashes could cause all tables to be skipped after the
+     first VIEW.
+   * Some DBIs did not consider ? inside a comment to be a placeholder.
+   * Systems that return nothing from CHECKSUM TABLE crashed mk-table-checksum.
+   * --askpass did not print a newline after reading password.
+   * Different TIMESTAMP display formatting could cause spurious checksum differences.
+   * Checksumming by chunks did not work when the chunk column contained NULL.
+   * --replicate did not always work correctly with binlog_do_db.
+
+2007-05-16: version 1.1.5
+
+   Incompatible changes:
+   * Output includes a new CHUNK column.
+   * When using --replicate, the specified table structure needs a new 'chunk' column.
+
+   Changes:
+   * Added --chunksize and --chunkcol options to checksum tables in chunks.
+   * Added --sleep option to pause between checksum queries.
+   * Added --emptyrepltbl option to empty --replicate table before starting work.
+   * Added --defaults-file option to read a given MySQL options file.
+   * Check for existence of --replicate table before starting work.
+   * Updated mk-checksum-filter to handle the new CHUNK column in the output.
+   * More documentation.
+   * More tests in the test suite.
+
+   Bugs fixed:
+   * The output in --replicate mode had an empty string in CHECKSUM when the
+     table had no rows (bad for scriptability).
+   * The --optxor optimization was broken and always disabled itself.
+
+2007-05-05: version 1.1.0
+
+   * Added a way to do checksums on slaves via replication.
+   * Added a row-order-independent BIT_XOR checksum algorithm.
+   * Much better documentation, which reflects more logically designed program.
+   * Added compatibility options for MySQL 3.23.58 through 6.0 alpha.
+   * Added a test suite.
+   * As per Heikki Tuuri, InnoDB and other engines can do CHECKSUM TABLE since 4.1.1
+   * Made existing ACCUM user-variable algorithm work with SELECT and INSERT.
+   * Changed default behavior for --count to avoid extra COUNT(*) query.
+   * Added --algorithm, --askpass, --defaults-file, --index, --replicate, and --separator options.
+   * Added warnings if the cmdline options are wrong.
+   * Don't fork when there is only one host.
+   * Speed and query optimizations.
+
+2007-04-05: version 1.0.4
+
+   * Verify servers have compatible MySQL version so checksums are valid.
+   * Documentation.
+
+2007-03-25: version 1.0.3
+
+   * Rewrite the GetOpt::Long code and rely on DBD to read MySQL option files.
+   * Make the exit code behave as expected.
+   * Handle errors from tables that have gone away or can't be read.
+   * Change command-line option names.
+
+2007-03-06: version 1.0.2
+
+   * Fix more quoting
+   * Fix an off-by-one error in mk-checksum-filter
+
+2007-03-02: version 1.0.1
+
+   * Fix quoting and skip lost+found database
+   * Add documentation
+
+2007-02-26: version 1.0.0
+
+   * Initial release.
+
+Changelog for mk-table-sync:
+
+2008-08-11: version 1.0.8
+
+   * Files downloaded directly from SVN crashed due to version information.
+   * --synctomaster did not abort when unable to discover the master.
+   * An error waiting for the master to catch up caused other tables to fail.
+   * Added --bufferinmysql to help make GroupBy algorithm more efficient.
+   * Added safety checks to prevent changing data on a slave server.
+   * Added --skipslavecheck to prevent safety checks on destination server.
+   * Made the GroupBy algorithm the default replacement for Stream.
+   * Added the GroupBy algorithm, which can sync tables without unique keys.
+   * Syncing could stop and leave a row to delete in the destination.
+   * Generate command-line help from the POD.
+
+2008-06-02: version 1.0.7
+
+   * Added NO_AUTO_VALUE_ON_ZERO to @@SQL_MODE (bug #1919897).
+   * Added --trim to compare pre-5.0 and 5.0+ VARCHAR values consistently.
+
+2008-03-16: version 1.0.6
+
+   * --chunksize was not being converted to rowcount (bug #1902341).
+   * Added --setvars option (bug #1904689, bug #1911371).
+   * Deprecated the --utf8 option in favor of the A part in DSNs.
+   * Mixed-case identifiers caused case-sensitivity issues (bug #1910276).
+   * Prefer SHOW PROCESSLIST when looking for slaves of a server.
+
+2008-02-10: version 1.0.5
+
+   * The Stream algorithm wasn't chosen when a table had no key.
+   * Numeric strings beginning with 0 weren't quoted (bug #1883019).
+
+2008-01-24: version 1.0.4
+
+   * Made the --algorithm option case-insensitive (bug #1873152).
+   * Fixed a quoting bug.
+   * Made the UTF-8 options configurable.
+
+2008-01-05: version 1.0.3
+
+   * Added the --function command-line option.
+   * Added support for the FNV_64 hash function (see mk-table-checksum).
+   * Made suffixes for time options optional (bug #1858696).
+   * InnoDB tables use --transaction unless it's explicitly specified.
+
+2007-12-27: version 1.0.2
+
+   * Syncing via replication did not use REPLACE on the master.
+   * --transaction disabled waiting for a slave to catch up.
+   * Allow one DSN without --replicate, as long as --synctomaster is given.
+   * Added the Nibble sync algorithm.
+   * MASTER_POS_WAIT() failed when the server was not a master (bug #1855480).
+   * DBD::mysql died after 'commands out of sync' error (bug #1856046).
+
+2007-12-16: version 1.0.1
+
+   * Empty strings were not quoted (bug #1848431).
+   * --tables and --ignoretables now accept names in the form db.tbl.
+
+2007-12-07: version 1.0.0
+
+   * Complete rewrite.
+   * Syncs multiple tables and servers
+   * Has no top-down or bottom-up algorithms
+   * Integrates with mk-table-checksum results
+   * Fixes many bugs, probably introduces new ones
+
+2007-11-12: version 0.9.9
+
+   * DSN parsing was broken when --synctomaster was given with one DSN.
+   * Changed --replicate to --synctomaster option.
+   * Errors were being hidden in an EVAL when --execute was specified (bug #1819744).
+
+2007-11-04: version 0.9.8
+
+   * Made command-line help easier to use.
+   * Removed the dependency on Term::ReadKey.
+   * Replaced some code with modules that are unit-tested.
+
+2007-10-01: version 0.9.7
+
+   * The special command-line syntax didn't allow a bare hostname.
+   * Added an informative printout of what is being synced.
+
+2007-08-23: version 0.9.6
+
+   * Added --askpass option.
+   * Changed --replicate option to --synctomaster.
+   * Fixed the MySQL socket option.
+   * Made --synctomaster able to connect to the master from SHOW SLAVE STATUS.
+   * MySQL socket connection option didn't work.
+   * Suppress duplicated error messages from MySQL.
+   * Changed DSN from URL-ish format to key=value format.
+   * Generated WHERE clauses weren't properly isolated in parentheses.
+   * Changed exit status to 0 when --help is given.
+   * Made --replicate imply --wait 60.
+
+2007-06-22: version 0.9.5
+
+   * Documentation.
+
+2007-06-10: version 0.9.4
+
+   * Added --defaults-file option.
+   * Added standard --version command-line option.
+
+2007-05-17: version 0.9.3
+
+   New features:
+
+   * Added --where option to limit syncing to part of a table.
+   * Added --defaults-file option to mimic MySQL's tools better.
+   * Added --skipforeignkey option to disable foreign key checks.
+
+   Bug fixes:
+   * Server-side STRCMP comparisons were being done on an in-use connection.
+
+2007-04-12: version 0.9.2
+
+   * Documentation (added OPTIONS section to perldoc).
+   * Bug fix: get a row at a time from the server by default.
+   * Bug fix: when the user specifies --columns, ignore other columns.
+   * Bug fix: make sure fetch handle is active before trying to fetch a row.
+
+2007-04-05: version 0.9.1
+
+   * Documentation.
+   * Fix order of drilldown groupings in topdown algorithm.
+   * Fix logarithmic math for bottomup algorithm (determining size from level).
+   * Add --queries option.  Add SQL comments to some queries.
+   * Add --singletxn option.
+   * Fix key comparison to match MySQL's sort order.
+   * Re-order statements to DELETE, UPDATE, INSERT.
+   * Add --deleteinsert option.
+   * Verify CONCAT_WS is compatible on both servers.
+   * Add test script.
+
+2007-03-25: version 0.9.0
+
+   * Rewrite the GetOpt::Long code and rely on DBD to read MySQL option files.
+   * Change some parsing of DSNs.
+   * Handle UPDATE statements correctly in handle_data_change.
+   * Handle some special cases in locking for consistency.
+
+2007-03-18: version 0.8.0
+
+   * Initial release.
+
+Changelog for mk-visual-explain:
+
+2008-08-11: version 1.0.9
+
+   * Files downloaded directly from SVN crashed due to version information.
+
+2008-06-02: version 1.0.8
+
+   * Updated common code.
+
+2008-03-16: version 1.0.7
+
+   * Added --setvars option (bug #1904689, bug #1911371).
+   * Added --charset option (bug #1877548).
+
+2007-12-16: version 1.0.6
+
+   * Updated common code, added debugging.
+
+2007-12-07: version 1.0.5
+
+   * Updated common code.
+   * Queries of the form "... FROM (SELECT 1) AS X" crashed the tool.
+
+2007-11-04: version 1.0.4
+
+   * Made command-line help easier to use.
+   * Removed the dependency on Term::ReadKey.
+   * Replaced some code with modules that are unit-tested.
+
+2007-09-20: version 1.0.3
+
+   * filesort wasn't applied to the first non-constant table.
+
+2007-09-01: version 1.0.2
+
+   * FULLTEXT indexes were not recognized (type=fulltext in EXPLAIN).
+   * Temporary/filesort were not added to the right node in the tree.
+   * Added a new node type for "Range checked for each record."
+
+2007-08-23: version 1.0.1
+
+   * MySQL socket connection option didn't work.
+   * Added --askpass option.
+   * UNIONs inside a SUBQUERY weren't correctly nested.
+   * Some types of impossible queries weren't handled.
+
+2007-07-28: version 1.0.0
+
+   * Initial release.

@@ -1,0 +1,841 @@
+
+
+[06/27 08 11:50:24] ### NEW JOB - www.t3creatortest3.dk created ###
+
+[06/27 08 11:50:24] Creating hotel dir in SVN
+
+[06/27 08 11:50:25] ERROR:
+[06/27 08 11:50:25] svn: MKCOL of '/typo3/!svn/wrk/3d0ffcfe-1c9e-47b3-983a-c9f7640c6b0c/hoteller/www.t3creatortest3.dk': 405 Method Not Allowed (https://dev.netimage.dk:4443)
+Kunne ikke oprette SVN dir til www.t3creatortest3.dk
+
+Fejlen opstaar formentlig fordi der allerede existere et hotel med samme navn i SVN[06/27 08 11:50:25] ### JOB DONE - www.t3creatortest3.dk created ###
+
+
+[06/27 08 11:50:25] ### NEW JOB - www.t3creatortest3.dk nuked ###
+
+[06/27 08 11:50:26] Deleting www.t3creatortest3.dk in SVN (acually just moving to "deleted" folder)
+[06/27 08 11:50:27] Deleting test hotel folder on DEV
+
+[06/27 08 11:50:28] ### JOB DONE - www.t3creatortest3.dk nuked ###
+
+
+[06/27 08 11:50:33] ### NEW JOB - www.t3creatortest3.dk created ###
+
+[06/27 08 11:50:33] Creating hotel dir in SVN
+
+[06/27 08 11:50:34] Copy template to new hotel in SVN
+[06/27 08 11:50:35] Creating branches and tags in SVN
+
+[06/27 08 11:50:36] Stripping hotelname to name without dots for DEV
+[06/27 08 11:50:36] Realname: www.t3creatortest3.dk
+[06/27 08 11:50:36] Stripped name: t3creatortest3
+
+[06/27 08 11:50:36] Creating testdir on DEV
+[06/27 08 11:50:36] Creating docs folder in testdir on DEV
+[06/27 08 11:50:36] Making checkout to testdir on DEV
+
+[06/27 08 11:50:59] Setting ignores on testdir on DEV
+[06/27 08 11:50:59] Setting ignore on: fileadmin/_temp_/
+[06/27 08 11:50:59] Setting ignore on: fileadmin/user_upload/
+[06/27 08 11:50:59] Setting ignore on: typo3temp/
+[06/27 08 11:50:59] Setting ignore on: uploads/
+[06/27 08 11:50:59] Ignore set done
+[06/27 08 11:51:02] Committed ignores to SVN
+
+[06/27 08 11:51:02] Connecting to Mysql
+[06/27 08 11:51:02] Connected to Mysql
+
+[06/27 08 11:51:02] test user and db deleted
+
+[06/27 08 11:51:02] Making mysql database name, user and pass
+[06/27 08 11:51:02] Mysql database name: t3_ne_t3creatort
+[06/27 08 11:51:02] Mysql database user: t3_ne_t3creato_u
+[06/27 08 11:51:02] Mysql database pass: ara5arahe
+
+[06/27 08 11:51:02] Checking if database or user already exists on DEV
+[06/27 08 11:51:02] Database dosen't exist - now created
+[06/27 08 11:51:02] Database user dosen't exist - now created
+[06/27 08 11:51:02] Rights set on database user
+[06/27 08 11:51:05] Data inserted to DB
+
+[06/27 08 11:51:05] Editing localconf.php and localconf_dev.php
+[06/27 08 11:51:05] Getting mysql user,pass and db from PIL....
+[06/27 08 11:51:10] Edit of localconf.php done
+[06/27 08 11:51:10] Edit of localconf_dev.php done
+[06/27 08 11:51:12] Changes in localconf.php and localconf_dev.php committed
+
+[06/27 08 11:51:12] Creating and writing baseUrl configuration
+[06/27 08 11:51:12] Production: www.t3creatortest3.dk
+[06/27 08 11:51:12] Production alias: t3creatortest3.nekat.pil.dk
+[06/27 08 11:51:12] DEV testhotel: t3creatortest3.t3.dev.netimage.dk
+[06/27 08 11:51:12] Baseurl configuration done
+[06/27 08 11:51:13] Baseurl configuration committed
+
+[06/27 08 11:51:13] All file writing done - Rights set to apache:internal
+[06/27 08 11:51:13] Making checkout on PIL server.
+
+[06/27 08 11:51:17] ### JOB DONE - www.t3creatortest3.dk created ###
+
+
+[06/27 08 14:07:04] ### NEW JOB - www.t3creatortest.dk created ###
+
+[06/27 08 14:07:04] Creating hotel dir in SVN
+
+[06/27 08 14:07:04][ERROR] svn: MKCOL of '/typo3/!svn/wrk/0116792e-9f9c-4c3b-9332-3f3475eaddf2/hoteller/www.t3creatortest.dk': 405 Method Not Allowed (https://dev.netimage.dk:4443)
+
+[06/27 08 14:07:04] ### JOB DONE - www.t3creatortest.dk created ###
+
+
+[06/27 08 14:07:09] ### NEW JOB - www.t3creatortest.dk created ###
+
+[06/27 08 14:07:09] Creating hotel dir in SVN
+
+[06/27 08 14:07:10][ERROR] svn: MKCOL of '/typo3/!svn/wrk/ae1749b1-f336-42f2-98a6-413e869047a7/hoteller/www.t3creatortest.dk': 405 Method Not Allowed (https://dev.netimage.dk:4443)
+
+[06/27 08 14:07:10] ### JOB DONE - www.t3creatortest.dk created ###
+
+
+[06/27 08 14:07:15] ### NEW JOB - www.t3creatortest.dk created ###
+
+[06/27 08 14:07:15] Creating hotel dir in SVN
+
+[06/27 08 14:07:16][ERROR] svn: MKCOL of '/typo3/!svn/wrk/fb28c350-28d0-46e3-8d54-f8e85ac9e3c6/hoteller/www.t3creatortest.dk': 405 Method Not Allowed (https://dev.netimage.dk:4443)
+
+[06/27 08 14:07:16] ### JOB DONE - www.t3creatortest.dk created ###
+
+
+[06/27 08 14:07:21] ### NEW JOB - www.t3creatortest.dk created ###
+
+[06/27 08 14:07:21] Creating hotel dir in SVN
+
+[06/27 08 14:07:21][ERROR] svn: MKCOL of '/typo3/!svn/wrk/52628a07-8dc2-43c7-b421-5cad92e48518/hoteller/www.t3creatortest.dk': 405 Method Not Allowed (https://dev.netimage.dk:4443)
+
+[06/27 08 14:07:21] ### JOB DONE - www.t3creatortest.dk created ###
+
+
+[06/27 08 14:07:27] ### NEW JOB - www.t3creatortest.dk created ###
+
+[06/27 08 14:07:27] Creating hotel dir in SVN
+
+[06/27 08 14:07:27][ERROR] svn: MKCOL of '/typo3/!svn/wrk/a0c27a61-0fff-465a-ad57-a83cb709aea8/hoteller/www.t3creatortest.dk': 405 Method Not Allowed (https://dev.netimage.dk:4443)
+
+[06/27 08 14:07:27] ### JOB DONE - www.t3creatortest.dk created ###
+
+
+[06/27 08 14:07:33] ### NEW JOB - www.t3creatortest.dk created ###
+
+[06/27 08 14:07:33] Creating hotel dir in SVN
+
+[06/27 08 14:07:34][ERROR] svn: MKCOL of '/typo3/!svn/wrk/03de8aa5-2591-4246-9054-9e8ef26f237c/hoteller/www.t3creatortest.dk': 405 Method Not Allowed (https://dev.netimage.dk:4443)
+
+[06/27 08 14:07:34] ### JOB DONE - www.t3creatortest.dk created ###
+
+
+[06/27 08 14:07:39] ### NEW JOB - www.t3creatortest.dk created ###
+
+[06/27 08 14:07:39] Creating hotel dir in SVN
+
+[06/27 08 14:07:40][ERROR] svn: MKCOL of '/typo3/!svn/wrk/f246cc17-cc43-4989-8fa7-70db9deebb53/hoteller/www.t3creatortest.dk': 405 Method Not Allowed (https://dev.netimage.dk:4443)
+
+[06/27 08 14:07:40] ### JOB DONE - www.t3creatortest.dk created ###
+
+
+[06/27 08 14:07:45] ### NEW JOB - www.t3creatortest.dk created ###
+
+[06/27 08 14:07:45] Creating hotel dir in SVN
+
+[06/27 08 14:07:45][ERROR] svn: MKCOL of '/typo3/!svn/wrk/5fb19a66-6024-400e-9174-f2ae85a6f556/hoteller/www.t3creatortest.dk': 405 Method Not Allowed (https://dev.netimage.dk:4443)
+
+[06/27 08 14:07:45] ### JOB DONE - www.t3creatortest.dk created ###
+
+
+[06/27 08 14:07:52] ### NEW JOB - www.t3creatortest.dk created ###
+
+[06/27 08 14:07:52] Creating hotel dir in SVN
+
+[06/27 08 14:07:52] Copy template to new hotel in SVN
+[06/27 08 14:07:54] Creating branches and tags in SVN
+
+[06/27 08 14:07:55] Stripping hotelname to name without dots for DEV
+[06/27 08 14:07:55] Realname: www.t3creatortest.dk
+[06/27 08 14:07:55] Stripped name: t3creatortest
+
+[06/27 08 14:07:55] Creating testdir on DEV
+[06/27 08 14:07:55] Creating docs folder in testdir on DEV
+[06/27 08 14:07:55] Making checkout to testdir on DEV
+
+[06/27 08 14:08:22] Setting ignores on testdir on DEV
+[06/27 08 14:08:22] Setting ignore on: fileadmin/_temp_/
+[06/27 08 14:08:22] Setting ignore on: fileadmin/user_upload/
+[06/27 08 14:08:22] Setting ignore on: typo3temp/
+[06/27 08 14:08:22] Setting ignore on: uploads/
+[06/27 08 14:08:22] Ignore set done
+[06/27 08 14:08:27] Committed ignores to SVN
+
+[06/27 08 14:08:27] Connecting to Mysql
+[06/27 08 14:08:27] Connected to Mysql
+
+[06/27 08 14:08:27] test user and db deleted
+
+[06/27 08 14:08:27] Making mysql database name, user and pass
+[06/27 08 14:08:27] Mysql database name: t3_ne_t3creatort
+[06/27 08 14:08:27] Mysql database user: t3_ne_t3creato_u
+[06/27 08 14:08:27] Mysql database pass: zade2azem
+
+[06/27 08 14:08:27] Checking if database or user already exists on DEV
+[06/27 08 14:08:27] Database dosen't exist - now created
+[06/27 08 14:08:27] Database user dosen't exist - now created
+[06/27 08 14:08:27] Rights set on database user
+[06/27 08 14:08:30] Data inserted to DB
+
+[06/27 08 14:08:30] Editing localconf.php and localconf_dev.php
+[06/27 08 14:08:30] Getting mysql user,pass and db from PIL.
+[06/27 08 14:08:32] Edit of localconf.php done
+[06/27 08 14:08:32] Edit of localconf_dev.php done
+[06/27 08 14:08:34] Changes in localconf.php and localconf_dev.php committed
+
+[06/27 08 14:08:34] Creating and writing baseUrl configuration
+[06/27 08 14:08:34] Production: www.t3creatortest.dk
+[06/27 08 14:08:34] Production alias: t3creatortest.nekat.pil.dk
+[06/27 08 14:08:34] DEV testhotel: t3creatortest.t3.dev.netimage.dk
+[06/27 08 14:08:34] Baseurl configuration done
+[06/27 08 14:08:35] Baseurl configuration committed
+
+[06/27 08 14:08:35] All file writing done - Rights set to apache:internal
+[06/27 08 14:08:35] Making checkout on PIL server........................
+
+[06/27 08 14:10:14] ### JOB DONE - www.t3creatortest.dk created ###
+
+
+[06/27 08 14:20:24] ### NEW JOB - www.t3creatortest2.dk created ###
+
+[06/27 08 14:20:24] Creating hotel dir in SVN
+
+[06/27 08 14:20:24] Copy template to new hotel in SVN
+[06/27 08 14:20:26] Creating branches and tags in SVN
+
+[06/27 08 14:20:27] Stripping hotelname to name without dots for DEV
+[06/27 08 14:20:27] Realname: www.t3creatortest2.dk
+[06/27 08 14:20:27] Stripped name: t3creatortest2
+
+[06/27 08 14:20:27] Creating testdir on DEV
+[06/27 08 14:20:27] Creating docs folder in testdir on DEV
+[06/27 08 14:20:27] Making checkout to testdir on DEV
+
+[06/27 08 14:20:54] Setting ignores on testdir on DEV
+[06/27 08 14:20:54] Setting ignore on: fileadmin/_temp_/
+[06/27 08 14:20:54] Setting ignore on: fileadmin/user_upload/
+[06/27 08 14:20:54] Setting ignore on: typo3temp/
+[06/27 08 14:20:54] Setting ignore on: uploads/
+[06/27 08 14:20:54] Ignore set done
+[06/27 08 14:20:57] Committed ignores to SVN
+
+[06/27 08 14:20:57] Connecting to Mysql
+[06/27 08 14:20:57] Connected to Mysql
+
+[06/27 08 14:20:57] test user and db deleted
+
+[06/27 08 14:20:57] Making mysql database name, user and pass
+[06/27 08 14:20:57] Mysql database name: t3_ne_t3creatort
+[06/27 08 14:20:57] Mysql database user: t3_ne_t3creato_u
+[06/27 08 14:20:57] Mysql database pass: hysa4a6ed
+
+[06/27 08 14:20:57] Checking if database or user already exists on DEV
+database select - errorUnknown database 't3_ne_t3creatort'[06/27 08 14:20:57] Database dosen't exist - now created
+CREATE USER t3_ne_t3creato_u@localhost IDENTIFIED BY 'hysa4a6ed'[06/27 08 14:20:57] Database user dosen't exist - now created
+[06/27 08 14:20:57] Rights set on database user
+[06/27 08 14:21:00] Data inserted to DB
+
+[06/27 08 14:21:00] Editing localconf.php and localconf_dev.php
+[06/27 08 14:21:00] Getting mysql user,pass and db from PIL...
+[06/27 08 14:21:04] Edit of localconf.php done
+[06/27 08 14:21:04] Edit of localconf_dev.php done
+[06/27 08 14:21:06] Changes in localconf.php and localconf_dev.php committed
+
+[06/27 08 14:21:06] Creating and writing baseUrl configuration
+[06/27 08 14:21:06] Production: www.t3creatortest2.dk
+[06/27 08 14:21:06] Production alias: t3creatortest2.nekat.pil.dk
+[06/27 08 14:21:06] DEV testhotel: t3creatortest2.t3.dev.netimage.dk
+[06/27 08 14:21:06] Baseurl configuration done
+[06/27 08 14:21:07] Baseurl configuration committed
+
+[06/27 08 14:21:07] All file writing done - Rights set to apache:internal
+[06/27 08 14:21:07] Making checkout on PIL server.........................
+
+[06/27 08 14:22:48] ### JOB DONE - www.t3creatortest2.dk created ###
+
+
+[06/27 08 14:22:48] ### NEW JOB - www.t3creatortest.dk nuked ###
+
+[06/27 08 14:22:49] Deleting www.t3creatortest.dk in SVN (acually just moving to "deleted" folder)
+[06/27 08 14:22:51] Deleting test hotel folder on DEV
+
+[06/27 08 14:22:51] ### JOB DONE - www.t3creatortest.dk nuked ###
+
+
+[06/27 08 14:35:18] ### NEW JOB - www.t3creatortest.dk created ###
+
+[06/27 08 14:35:18] Creating hotel dir in SVN
+
+[06/27 08 14:35:18] Copy template to new hotel in SVN
+[06/27 08 14:35:20] Creating branches and tags in SVN
+
+[06/27 08 14:35:21] Stripping hotelname to name without dots for DEV
+[06/27 08 14:35:21] Realname: www.t3creatortest.dk
+[06/27 08 14:35:21] Stripped name: t3creatortest
+
+[06/27 08 14:35:21] Creating testdir on DEV
+[06/27 08 14:35:21] Creating docs folder in testdir on DEV
+[06/27 08 14:35:21] Making checkout to testdir on DEV
+
+[06/27 08 14:35:51] Setting ignores on testdir on DEV
+[06/27 08 14:35:51] Setting ignore on: fileadmin/_temp_/
+[06/27 08 14:35:51] Setting ignore on: fileadmin/user_upload/
+[06/27 08 14:35:51] Setting ignore on: typo3temp/
+[06/27 08 14:35:51] Setting ignore on: uploads/
+[06/27 08 14:35:51] Ignore set done
+[06/27 08 14:35:55] Committed ignores to SVN
+
+[06/27 08 14:35:55] Connecting to Mysql
+[06/27 08 14:35:55] Connected to Mysql
+
+[06/27 08 14:35:55] Making mysql database name, user and pass
+[06/27 08 14:35:55] Mysql database name: t3_ne_t3creatort
+[06/27 08 14:35:55] Mysql database user: t3_ne_t3creato_u
+[06/27 08 14:35:55] Mysql database pass: pa7yma2ev
+
+[06/27 08 14:35:55] Checking if database or user already exists on DEV
+[06/27 08 14:35:55][ERROR] Database already exists on DEV
+
+[06/27 08 14:35:55] ### JOB DONE - www.t3creatortest.dk created ###
+
+
+[06/27 08 14:36:00] ### NEW JOB - www.t3creatortest.dk created ###
+
+[06/27 08 14:36:00] Creating hotel dir in SVN
+
+[06/27 08 14:36:00][ERROR] svn: MKCOL of '/typo3/!svn/wrk/22cd892d-2c7f-4585-8745-aa8823e2272c/hoteller/www.t3creatortest.dk': 405 Method Not Allowed (https://dev.netimage.dk:4443)
+
+[06/27 08 14:36:00] ### JOB DONE - www.t3creatortest.dk created ###
+
+
+[06/27 08 14:36:06] ### NEW JOB - www.t3creatortest.dk created ###
+
+[06/27 08 14:36:06] Creating hotel dir in SVN
+
+[06/27 08 14:36:06][ERROR] svn: MKCOL of '/typo3/!svn/wrk/dba42d0a-0e85-4302-b1f7-f14ecfaaa6f2/hoteller/www.t3creatortest.dk': 405 Method Not Allowed (https://dev.netimage.dk:4443)
+
+[06/27 08 14:36:06] ### JOB DONE - www.t3creatortest.dk created ###
+
+
+[06/27 08 14:36:11] ### NEW JOB - www.t3creatortest.dk created ###
+
+[06/27 08 14:36:11] Creating hotel dir in SVN
+
+[06/27 08 14:36:12][ERROR] svn: MKCOL of '/typo3/!svn/wrk/75b2aa9d-1587-483b-8e01-e71ccac0fb5a/hoteller/www.t3creatortest.dk': 405 Method Not Allowed (https://dev.netimage.dk:4443)
+
+[06/27 08 14:36:12] ### JOB DONE - www.t3creatortest.dk created ###
+
+
+[06/27 08 14:36:17] ### NEW JOB - www.t3creatortest.dk created ###
+
+[06/27 08 14:36:17] Creating hotel dir in SVN
+
+[06/27 08 14:36:18][ERROR] svn: MKCOL of '/typo3/!svn/wrk/9b094a42-861f-45b7-968b-a090892df33b/hoteller/www.t3creatortest.dk': 405 Method Not Allowed (https://dev.netimage.dk:4443)
+
+[06/27 08 14:36:18] ### JOB DONE - www.t3creatortest.dk created ###
+
+
+[06/27 08 14:36:23] ### NEW JOB - www.t3creatortest.dk created ###
+
+[06/27 08 14:36:23] Creating hotel dir in SVN
+
+[06/27 08 14:36:23][ERROR] svn: MKCOL of '/typo3/!svn/wrk/f8badbf7-d3c5-44b3-a51a-aa5b436a373c/hoteller/www.t3creatortest.dk': 405 Method Not Allowed (https://dev.netimage.dk:4443)
+
+[06/27 08 14:36:23] ### JOB DONE - www.t3creatortest.dk created ###
+
+
+[06/27 08 14:36:29] ### NEW JOB - www.t3creatortest.dk created ###
+
+[06/27 08 14:36:29] Creating hotel dir in SVN
+
+[06/27 08 14:36:30] Copy template to new hotel in SVN
+[06/27 08 14:36:31] Creating branches and tags in SVN
+
+[06/27 08 14:36:32] Stripping hotelname to name without dots for DEV
+[06/27 08 14:36:32] Realname: www.t3creatortest.dk
+[06/27 08 14:36:32] Stripped name: t3creatortest
+
+[06/27 08 14:36:32] Creating testdir on DEV
+[06/27 08 14:36:32][ERROR] mkdir: cannot create directory `/dana/data/typo3/hoteller/t3creatortest': File exists
+
+[06/27 08 14:36:32] ### JOB DONE - www.t3creatortest.dk created ###
+
+
+[06/27 08 14:36:38] ### NEW JOB - www.t3creatortest.dk created ###
+
+[06/27 08 14:36:38] Creating hotel dir in SVN
+
+[06/27 08 14:36:39] Copy template to new hotel in SVN
+[06/27 08 14:36:40] Creating branches and tags in SVN
+
+[06/27 08 14:36:41] Stripping hotelname to name without dots for DEV
+[06/27 08 14:36:41] Realname: www.t3creatortest.dk
+[06/27 08 14:36:41] Stripped name: t3creatortest
+
+[06/27 08 14:36:41] Creating testdir on DEV
+[06/27 08 14:36:41][ERROR] mkdir: cannot create directory `/dana/data/typo3/hoteller/t3creatortest': File exists
+
+[06/27 08 14:36:41] ### JOB DONE - www.t3creatortest.dk created ###
+
+
+[06/27 08 14:36:47] ### NEW JOB - www.t3creatortest.dk created ###
+
+[06/27 08 14:36:47] Creating hotel dir in SVN
+
+[06/27 08 14:36:48] Copy template to new hotel in SVN
+[06/27 08 14:36:49] Creating branches and tags in SVN
+
+[06/27 08 14:36:50] Stripping hotelname to name without dots for DEV
+[06/27 08 14:36:50] Realname: www.t3creatortest.dk
+[06/27 08 14:36:50] Stripped name: t3creatortest
+
+[06/27 08 14:36:50] Creating testdir on DEV
+[06/27 08 14:36:50][ERROR] mkdir: cannot create directory `/dana/data/typo3/hoteller/t3creatortest': File exists
+
+[06/27 08 14:36:50] ### JOB DONE - www.t3creatortest.dk created ###
+
+
+[06/27 08 14:36:56] ### NEW JOB - www.t3creatortest.dk created ###
+
+[06/27 08 14:36:56] Creating hotel dir in SVN
+
+[06/27 08 14:36:57] Copy template to new hotel in SVN
+[06/27 08 14:36:58] Creating branches and tags in SVN
+
+[06/27 08 14:36:59] Stripping hotelname to name without dots for DEV
+[06/27 08 14:36:59] Realname: www.t3creatortest.dk
+[06/27 08 14:36:59] Stripped name: t3creatortest
+
+[06/27 08 14:36:59] Creating testdir on DEV
+[06/27 08 14:36:59] Creating docs folder in testdir on DEV
+[06/27 08 14:36:59] Making checkout to testdir on DEV
+
+[06/27 08 14:37:25] Setting ignores on testdir on DEV
+[06/27 08 14:37:25] Setting ignore on: fileadmin/_temp_/
+[06/27 08 14:37:25] Setting ignore on: fileadmin/user_upload/
+[06/27 08 14:37:25] Setting ignore on: typo3temp/
+[06/27 08 14:37:25] Setting ignore on: uploads/
+[06/27 08 14:37:25] Ignore set done
+[06/27 08 14:37:29] Committed ignores to SVN
+
+[06/27 08 14:37:29] Connecting to Mysql
+[06/27 08 14:37:29] Connected to Mysql
+
+[06/27 08 14:37:29] Making mysql database name, user and pass
+[06/27 08 14:37:29] Mysql database name: t3_ne_t3creatort
+[06/27 08 14:37:29] Mysql database user: t3_ne_t3creato_u
+[06/27 08 14:37:29] Mysql database pass: 2yma9y7ah
+
+[06/27 08 14:37:29] Checking if database or user already exists on DEV
+[06/27 08 14:37:29][ERROR] Database already exists on DEV
+
+[06/27 08 14:37:29] ### JOB DONE - www.t3creatortest.dk created ###
+
+
+[06/27 08 14:37:35] ### NEW JOB - www.t3creatortest.dk created ###
+
+[06/27 08 14:37:35] Creating hotel dir in SVN
+
+[06/27 08 14:37:36] Copy template to new hotel in SVN
+[06/27 08 14:37:37] Creating branches and tags in SVN
+
+[06/27 08 14:37:38] Stripping hotelname to name without dots for DEV
+[06/27 08 14:37:38] Realname: www.t3creatortest.dk
+[06/27 08 14:37:38] Stripped name: t3creatortest
+
+[06/27 08 14:37:38] Creating testdir on DEV
+[06/27 08 14:37:38] Creating docs folder in testdir on DEV
+[06/27 08 14:37:38] Making checkout to testdir on DEV
+
+[06/27 08 14:38:05] Setting ignores on testdir on DEV
+[06/27 08 14:38:05] Setting ignore on: fileadmin/_temp_/
+[06/27 08 14:38:05] Setting ignore on: fileadmin/user_upload/
+[06/27 08 14:38:05] Setting ignore on: typo3temp/
+[06/27 08 14:38:05] Setting ignore on: uploads/
+[06/27 08 14:38:05] Ignore set done
+[06/27 08 14:38:10] Committed ignores to SVN
+
+[06/27 08 14:38:10] Connecting to Mysql
+[06/27 08 14:38:10] Connected to Mysql
+
+[06/27 08 14:38:10] Making mysql database name, user and pass
+[06/27 08 14:38:10] Mysql database name: t3_ne_t3creatort
+[06/27 08 14:38:10] Mysql database user: t3_ne_t3creato_u
+[06/27 08 14:38:10] Mysql database pass: unuqehy2u
+
+[06/27 08 14:38:10] Checking if database or user already exists on DEV
+[06/27 08 14:38:10][ERROR] Database already exists on DEV
+
+[06/27 08 14:38:10] ### JOB DONE - www.t3creatortest.dk created ###
+
+
+[06/27 08 14:38:16] ### NEW JOB - www.t3creatortest.dk created ###
+
+[06/27 08 14:38:16] Creating hotel dir in SVN
+
+[06/27 08 14:38:17] Copy template to new hotel in SVN
+[06/27 08 14:38:18] Creating branches and tags in SVN
+
+[06/27 08 14:38:19] Stripping hotelname to name without dots for DEV
+[06/27 08 14:38:19] Realname: www.t3creatortest.dk
+[06/27 08 14:38:19] Stripped name: t3creatortest
+
+[06/27 08 14:38:19] Creating testdir on DEV
+[06/27 08 14:38:19] Creating docs folder in testdir on DEV
+[06/27 08 14:38:19] Making checkout to testdir on DEV
+
+[06/27 08 14:38:46] Setting ignores on testdir on DEV
+[06/27 08 14:38:46] Setting ignore on: fileadmin/_temp_/
+[06/27 08 14:38:46] Setting ignore on: fileadmin/user_upload/
+[06/27 08 14:38:46] Setting ignore on: typo3temp/
+[06/27 08 14:38:46] Setting ignore on: uploads/
+[06/27 08 14:38:46] Ignore set done
+[06/27 08 14:38:51] Committed ignores to SVN
+
+[06/27 08 14:38:51] Connecting to Mysql
+[06/27 08 14:38:51] Connected to Mysql
+
+[06/27 08 14:38:51] Making mysql database name, user and pass
+[06/27 08 14:38:51] Mysql database name: t3_ne_t3creatort
+[06/27 08 14:38:51] Mysql database user: t3_ne_t3creato_u
+[06/27 08 14:38:51] Mysql database pass: 4eha7e2ym
+
+[06/27 08 14:38:51] Checking if database or user already exists on DEV
+[06/27 08 14:38:51] Database dosen't exist - now created
+CREATE USER t3_ne_t3creato_u@localhost IDENTIFIED BY '4eha7e2ym'[06/27 08 14:38:51][ERROR] User already exists on DEV
+
+[06/27 08 14:38:51] ### JOB DONE - www.t3creatortest.dk created ###
+
+
+[06/27 08 14:38:57] ### NEW JOB - www.t3creatortest.dk created ###
+
+[06/27 08 14:38:57] Creating hotel dir in SVN
+
+[06/27 08 14:38:58] Copy template to new hotel in SVN
+[06/27 08 14:38:59] Creating branches and tags in SVN
+
+[06/27 08 14:39:00] Stripping hotelname to name without dots for DEV
+[06/27 08 14:39:00] Realname: www.t3creatortest.dk
+[06/27 08 14:39:00] Stripped name: t3creatortest
+
+[06/27 08 14:39:00] Creating testdir on DEV
+[06/27 08 14:39:00] Creating docs folder in testdir on DEV
+[06/27 08 14:39:00] Making checkout to testdir on DEV
+
+[06/27 08 14:39:26] Setting ignores on testdir on DEV
+[06/27 08 14:39:26] Setting ignore on: fileadmin/_temp_/
+[06/27 08 14:39:26] Setting ignore on: fileadmin/user_upload/
+[06/27 08 14:39:26] Setting ignore on: typo3temp/
+[06/27 08 14:39:26] Setting ignore on: uploads/
+[06/27 08 14:39:26] Ignore set done
+[06/27 08 14:39:31] Committed ignores to SVN
+
+[06/27 08 14:39:31] Connecting to Mysql
+[06/27 08 14:39:31] Connected to Mysql
+
+[06/27 08 14:39:31] Making mysql database name, user and pass
+[06/27 08 14:39:31] Mysql database name: t3_ne_t3creatort
+[06/27 08 14:39:31] Mysql database user: t3_ne_t3creato_u
+[06/27 08 14:39:31] Mysql database pass: hyqe7aruq
+
+[06/27 08 14:39:31] Checking if database or user already exists on DEV
+[06/27 08 14:39:31] Database dosen't exist - now created
+CREATE USER t3_ne_t3creato_u@localhost IDENTIFIED BY 'hyqe7aruq'[06/27 08 14:39:31][ERROR] User already exists on DEV
+
+[06/27 08 14:39:31] ### JOB DONE - www.t3creatortest.dk created ###
+
+
+[06/27 08 14:39:37] ### NEW JOB - www.t3creatortest.dk created ###
+
+[06/27 08 14:39:37] Creating hotel dir in SVN
+
+[06/27 08 14:39:38] Copy template to new hotel in SVN
+[06/27 08 14:39:40] Creating branches and tags in SVN
+
+[06/27 08 14:39:41] Stripping hotelname to name without dots for DEV
+[06/27 08 14:39:41] Realname: www.t3creatortest.dk
+[06/27 08 14:39:41] Stripped name: t3creatortest
+
+[06/27 08 14:39:41] Creating testdir on DEV
+[06/27 08 14:39:41] Creating docs folder in testdir on DEV
+[06/27 08 14:39:41] Making checkout to testdir on DEV
+
+[06/27 08 14:40:14] Setting ignores on testdir on DEV
+[06/27 08 14:40:14] Setting ignore on: fileadmin/_temp_/
+[06/27 08 14:40:14] Setting ignore on: fileadmin/user_upload/
+[06/27 08 14:40:14] Setting ignore on: typo3temp/
+[06/27 08 14:40:14] Setting ignore on: uploads/
+[06/27 08 14:40:14] Ignore set done
+[06/27 08 14:40:19] Committed ignores to SVN
+
+[06/27 08 14:40:19] Connecting to Mysql
+[06/27 08 14:40:19] Connected to Mysql
+
+[06/27 08 14:40:19] Making mysql database name, user and pass
+[06/27 08 14:40:19] Mysql database name: t3_ne_t3creatort
+[06/27 08 14:40:19] Mysql database user: t3_ne_t3creato_u
+[06/27 08 14:40:19] Mysql database pass: gu2ahevap
+
+[06/27 08 14:40:19] Checking if database or user already exists on DEV
+[06/27 08 14:40:19] Database dosen't exist - now created
+[06/27 08 14:40:19] Database user dosen't exist - now created
+[06/27 08 14:40:19] Rights set on database user
+[06/27 08 14:40:21] Data inserted to DB
+
+[06/27 08 14:40:21] Editing localconf.php and localconf_dev.php
+[06/27 08 14:40:21] Getting mysql user,pass and db from PIL...
+[06/27 08 14:40:26] Edit of localconf.php done
+[06/27 08 14:40:26] Edit of localconf_dev.php done
+[06/27 08 14:40:28] Changes in localconf.php and localconf_dev.php committed
+
+[06/27 08 14:40:28] Creating and writing baseUrl configuration
+[06/27 08 14:40:28] Production: www.t3creatortest.dk
+[06/27 08 14:40:28] Production alias: t3creatortest.nekat.pil.dk
+[06/27 08 14:40:28] DEV testhotel: t3creatortest.t3.dev.netimage.dk
+[06/27 08 14:40:28] Baseurl configuration done
+[06/27 08 14:40:29] Baseurl configuration committed
+
+[06/27 08 14:40:29] All file writing done - Rights set to apache:internal
+[06/27 08 14:40:29] Making checkout on PIL server........................
+
+[06/27 08 14:42:08] ### JOB DONE - www.t3creatortest.dk created ###
+[06/27 08 14:50:58][ERROR] Database already exists on DEV
+
+[06/30 08 07:45:38][ERROR] svn: OPTIONS request failed on '/typo3/hoteller'
+svn: OPTIONS of '/typo3/hoteller': could not connect to server (https://dev.netimage.dk:4443)
+
+
+
+[06/30 08 10:25:19] ### NEW JOB - www.bka2test.dk created ###
+
+[06/30 08 10:25:19] Creating hotel dir in SVN
+
+[06/30 08 10:25:19] Copy template to new hotel in SVN
+[06/30 08 10:25:21] Creating branches and tags in SVN
+
+[06/30 08 10:25:22] Stripping hotelname to name without dots for DEV
+[06/30 08 10:25:22] Realname: www.bka2test.dk
+[06/30 08 10:25:22] Stripped name: bka2test
+
+[06/30 08 10:25:22] Creating testdir on DEV
+[06/30 08 10:25:22] Creating docs folder in testdir on DEV
+[06/30 08 10:25:22] Making checkout to testdir on DEV
+
+[06/30 08 10:25:55] Setting ignores on testdir on DEV
+[06/30 08 10:25:55] Setting ignore on: fileadmin/_temp_/
+[06/30 08 10:25:55] Setting ignore on: fileadmin/user_upload/
+[06/30 08 10:25:55] Setting ignore on: typo3temp/
+[06/30 08 10:25:55] Setting ignore on: uploads/
+[06/30 08 10:25:55] Ignore set done
+[06/30 08 10:26:00] Committed ignores to SVN
+
+[06/30 08 10:26:00] Connecting to Mysql
+[06/30 08 10:26:00] Connected to Mysql
+
+[06/30 08 10:26:00] Making mysql database name, user and pass
+[06/30 08 10:26:00] Mysql database name: t3_ne_bka2test
+[06/30 08 10:26:00] Mysql database user: t3_ne_bka2test_u
+[06/30 08 10:26:00] Mysql database pass: eqy2y4e8e
+
+[06/30 08 10:26:00] Checking if database or user already exists on DEV
+[06/30 08 10:26:00] Database dosen't exist - now created
+[06/30 08 10:26:00] Database user dosen't exist - now created
+[06/30 08 10:26:00] Rights set on database user
+[06/30 08 10:26:02] Data inserted to DB
+
+[06/30 08 10:26:02] Editing localconf.php and localconf_dev.php
+[06/30 08 10:26:02] Getting mysql user,pass and db from PIL....
+[06/30 08 10:26:08] Edit of localconf.php done
+[06/30 08 10:26:08] Edit of localconf_dev.php done
+[06/30 08 10:26:10] Changes in localconf.php and localconf_dev.php committed
+
+[06/30 08 10:26:10] Creating and writing baseUrl configuration
+[06/30 08 10:26:10] Production: www.bka2test.dk
+[06/30 08 10:26:10] Production alias: bka2test.nekat.pil.dk
+[06/30 08 10:26:10] DEV testhotel: bka2test.t3.dev.netimage.dk
+[06/30 08 10:26:10] Baseurl configuration done
+[06/30 08 10:26:11] Baseurl configuration committed
+
+[06/30 08 10:26:11] All file writing done - Rights set to apache:internal
+[06/30 08 10:26:11] Making checkout on PIL server........................
+
+[06/30 08 10:27:51] ### JOB DONE - www.bka2test.dk created ###
+
+
+[06/30 08 14:45:49] ### NEW JOB - www.bka3test.dk created ###
+
+[06/30 08 14:45:49] Creating hotel dir in SVN
+
+[06/30 08 14:45:49] Copy template to new hotel in SVN
+[06/30 08 14:45:51] Creating branches and tags in SVN
+
+[06/30 08 14:45:52] Stripping hotelname to name without dots for DEV
+[06/30 08 14:45:52] Realname: www.bka3test.dk
+[06/30 08 14:45:52] Stripped name: bka3test
+
+[06/30 08 14:45:52] Creating testdir on DEV
+[06/30 08 14:45:52] Creating docs folder in testdir on DEV
+[06/30 08 14:45:52] Making checkout to testdir on DEV
+
+[06/30 08 14:46:35] Setting ignores on testdir on DEV
+[06/30 08 14:46:35] Setting ignore on: fileadmin/_temp_/
+[06/30 08 14:46:35] Setting ignore on: fileadmin/user_upload/
+[06/30 08 14:46:35] Setting ignore on: typo3temp/
+[06/30 08 14:46:35] Setting ignore on: uploads/
+[06/30 08 14:46:35] Ignore set done
+[06/30 08 14:46:38] Committed ignores to SVN
+
+[06/30 08 14:46:38] Connecting to Mysql
+[06/30 08 14:46:38] Connected to Mysql
+
+[06/30 08 14:46:38] Making mysql database name, user and pass
+[06/30 08 14:46:38] Mysql database name: t3_ne_bka3test
+[06/30 08 14:46:38] Mysql database user: t3_ne_bka3test_u
+[06/30 08 14:46:38] Mysql database pass: e4usuvute
+
+[06/30 08 14:46:38] Checking if database or user already exists on DEV
+[06/30 08 14:46:38] Database dosen't exist - now created
+[06/30 08 14:46:38] Database user dosen't exist - now created
+[06/30 08 14:46:38] Rights set on database user
+[06/30 08 14:46:42] Data inserted to DB
+
+[06/30 08 14:46:42] Editing localconf.php and localconf_dev.php
+[06/30 08 14:46:42] Getting mysql user,pass and db from PIL....
+[06/30 08 14:46:48] Edit of localconf.php done
+[06/30 08 14:46:48] Edit of localconf_dev.php done
+[06/30 08 14:46:50] Changes in localconf.php and localconf_dev.php committed
+
+[06/30 08 14:46:50] Creating and writing baseUrl configuration
+[06/30 08 14:46:50] Production: www.bka3test.dk
+[06/30 08 14:46:50] Production alias: bka3test.nekat.pil.dk
+[06/30 08 14:46:50] DEV testhotel: bka3test.t3.dev.netimage.dk
+[06/30 08 14:46:50] Baseurl configuration done
+[06/30 08 14:46:51] Baseurl configuration committed
+
+[06/30 08 14:48:31] All file writing done - Rights set to apache:internal
+[06/30 08 14:48:31] Making checkout on PIL server........................
+
+[06/30 08 14:50:12] ### JOB DONE - www.bka3test.dk created ###
+
+
+[06/30 08 15:20:19] ### NEW JOB - www.nupo.dk created ###
+
+[06/30 08 15:20:19] Creating hotel dir in SVN
+
+[06/30 08 15:20:20] Copy template to new hotel in SVN
+[06/30 08 15:20:21] Creating branches and tags in SVN
+
+[06/30 08 15:20:22] Stripping hotelname to name without dots for DEV
+[06/30 08 15:20:22] Realname: www.nupo.dk
+[06/30 08 15:20:22] Stripped name: nupo
+
+[06/30 08 15:20:22] Creating testdir on DEV
+[06/30 08 15:20:22] Creating docs folder in testdir on DEV
+[06/30 08 15:20:22] Making checkout to testdir on DEV
+
+[06/30 08 15:20:51] Setting ignores on testdir on DEV
+[06/30 08 15:20:51] Setting ignore on: fileadmin/_temp_/
+[06/30 08 15:20:51] Setting ignore on: fileadmin/user_upload/
+[06/30 08 15:20:51] Setting ignore on: typo3temp/
+[06/30 08 15:20:51] Setting ignore on: uploads/
+[06/30 08 15:20:51] Ignore set done
+[06/30 08 15:20:55] Committed ignores to SVN
+
+[06/30 08 15:20:55] Connecting to Mysql
+[06/30 08 15:20:55] Connected to Mysql
+
+[06/30 08 15:20:55] Making mysql database name, user and pass
+[06/30 08 15:20:55] Mysql database name: t3_ne_nupo
+[06/30 08 15:20:55] Mysql database user: t3_ne_nupo_u
+[06/30 08 15:20:55] Mysql database pass: 6yneqada4
+
+[06/30 08 15:20:55] Checking if database or user already exists on DEV
+[06/30 08 15:20:55] Database dosen't exist - now created
+[06/30 08 15:20:55] Database user dosen't exist - now created
+[06/30 08 15:20:55] Rights set on database user
+[06/30 08 15:20:57] Data inserted to DB
+
+[06/30 08 15:20:57] Editing localconf.php and localconf_dev.php
+[06/30 08 15:20:57] Getting mysql user,pass and db from PIL...
+[06/30 08 15:21:01] Edit of localconf.php done
+[06/30 08 15:21:02] Edit of localconf_dev.php done
+[06/30 08 15:21:03] Changes in localconf.php and localconf_dev.php committed
+
+[06/30 08 15:21:03] Creating and writing baseUrl configuration
+[06/30 08 15:21:03] Production: www.nupo.dk
+[06/30 08 15:21:03] Production alias: nupo.nekat.pil.dk
+[06/30 08 15:21:03] DEV testhotel: nupo.t3.dev.netimage.dk
+[06/30 08 15:21:03] Baseurl configuration done
+[06/30 08 15:21:04] Baseurl configuration committed
+
+[06/30 08 15:22:39] All file writing done - Rights set to apache:internal
+[06/30 08 15:22:39] Making checkout on PIL server........................
+
+[06/30 08 15:24:19] ### JOB DONE - www.nupo.dk created ###
+
+
+[07/02 08 08:55:16] ### NEW JOB - typo3hotelmanager.netimage.dk created ###
+
+[07/02 08 08:55:17] Creating hotel dir in SVN
+
+[07/02 08 08:55:18] Copy template to new hotel in SVN
+[07/02 08 08:55:19] Creating branches and tags in SVN
+
+[07/02 08 08:55:20] Stripping hotelname to name without dots for DEV
+[07/02 08 08:55:20] Realname: typo3hotelmanager.netimage.dk
+[07/02 08 08:55:20] Stripped name: typo3hotelmanager_netimage
+
+[07/02 08 08:55:20] Creating testdir on DEV
+[07/02 08 08:55:20] Creating docs folder in testdir on DEV
+[07/02 08 08:55:20] Making checkout to testdir on DEV
+
+[07/02 08 08:56:02] Setting ignores on testdir on DEV
+[07/02 08 08:56:02] Setting ignore on: fileadmin/_temp_/
+[07/02 08 08:56:02] Setting ignore on: fileadmin/user_upload/
+[07/02 08 08:56:02] Setting ignore on: typo3temp/
+[07/02 08 08:56:02] Setting ignore on: uploads/
+[07/02 08 08:56:02] Ignore set done
+[07/02 08 08:56:05] Committed ignores to SVN
+
+[07/02 08 08:56:05] Connecting to Mysql
+[07/02 08 08:56:05] Connected to Mysql
+
+[07/02 08 08:56:05] Making mysql database name, user and pass
+[07/02 08 08:56:05] Mysql database name: t3_ne_typo3hotel
+[07/02 08 08:56:05] Mysql database user: t3_ne_typo3hot_u
+[07/02 08 08:56:05] Mysql database pass: 7yzaga8an
+
+[07/02 08 08:56:05] Checking if database or user already exists on DEV
+[07/02 08 08:56:05] Database dosen't exist - now created
+[07/02 08 08:56:05] Database user dosen't exist - now created
+[07/02 08 08:56:05] Rights set on database user
+[07/02 08 08:56:08] Data inserted to DB
+
+[07/02 08 08:56:08] Editing localconf.php and localconf_dev.php
+[07/02 08 08:56:08] Getting mysql user,pass and db from PIL....................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................
+[07/02 08 09:52:01] Edit of localconf.php done
+[07/02 08 09:52:01] Edit of localconf_dev.php done
+[07/02 08 09:52:02] Changes in localconf.php and localconf_dev.php committed
+
+[07/02 08 09:52:02] Creating and writing baseUrl configuration
+[07/02 08 09:52:02] Production: typo3hotelmanager.netimage.dk
+[07/02 08 09:52:02] Production alias: typo3hotelmanager.netimage.nekat.pil.dk
+[07/02 08 09:52:02] DEV testhotel: typo3hotelmanager_netimage.t3.dev.netimage.dk
+[07/02 08 09:52:02] Baseurl configuration done
+[07/02 08 09:52:03] Baseurl configuration committed
+
+[07/02 08 09:53:42] All file writing done - Rights set to apache:internal
+[07/02 08 09:53:42] Making checkout on PIL server............................
+
+[07/02 08 09:55:31] ### JOB DONE - typo3hotelmanager.netimage.dk created ###

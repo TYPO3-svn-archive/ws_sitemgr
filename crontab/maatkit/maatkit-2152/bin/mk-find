@@ -1,0 +1,1832 @@
+#!/usr/bin/perl
+
+# This is mk-find, a program that searches for MySQL tables and takes actions
+# like GNU find.
+#
+# This program is copyright (c) 2007 Baron Schwartz.
+# Feedback and improvements are welcome.
+#
+# THIS PROGRAM IS PROVIDED "AS IS" AND WITHOUT ANY EXPRESS OR IMPLIED
+# WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED WARRANTIES OF
+# MERCHANTIBILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+#
+# This program is free software; you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free Software
+# Foundation, version 2; OR the Perl Artistic License.  On UNIX and similar
+# systems, you can issue `man perlgpl' or `man perlartistic' to read these
+# licenses.
+#
+# You should have received a copy of the GNU General Public License along with
+# this program; if not, write to the Free Software Foundation, Inc., 59 Temple
+# Place, Suite 330, Boston, MA  02111-1307  USA.
+
+use strict;
+use warnings FATAL => 'all';
+
+our $VERSION = '0.9.12';
+our $DISTRIB = '2152';
+our $SVN_REV = sprintf("%d", (q$Revision: 2138 $ =~ m/(\d+)/g, 0));
+
+# ###########################################################################
+# DSNParser package 2005
+# ###########################################################################
+use strict;
+use warnings FATAL => 'all';
+
+package DSNParser;
+
+use DBI;
+use Data::Dumper;
+$Data::Dumper::Indent    = 0;
+$Data::Dumper::Quotekeys = 0;
+use English qw(-no_match_vars);
+
+sub new {
+   my ( $class, @opts ) = @_;
+   my $self = {
+      opts => {
+         A => {
+            desc => 'Default character set',
+            dsn  => 'charset',
+            copy => 1,
+         },
+         D => {
+            desc => 'Database to use',
+            dsn  => 'database',
+            copy => 1,
+         },
+         F => {
+            desc => 'Only read default options from the given file',
+            dsn  => 'mysql_read_default_file',
+            copy => 1,
+         },
+         h => {
+            desc => 'Connect to host',
+            dsn  => 'host',
+            copy => 1,
+         },
+         p => {
+            desc => 'Password to use when connecting',
+            dsn  => 'password',
+            copy => 1,
+         },
+         P => {
+            desc => 'Port number to use for connection',
+            dsn  => 'port',
+            copy => 1,
+         },
+         S => {
+            desc => 'Socket file to use for connection',
+            dsn  => 'mysql_socket',
+            copy => 1,
+         },
+         u => {
+            desc => 'User for login if not current user',
+            dsn  => 'user',
+            copy => 1,
+         },
+      },
+   };
+   foreach my $opt ( @opts ) {
+      $ENV{MKDEBUG} && _d('Adding extra property ' . $opt->{key});
+      $self->{opts}->{$opt->{key}} = { desc => $opt->{desc}, copy => $opt->{copy} };
+   }
+   return bless $self, $class;
+}
+
+sub prop {
+   my ( $self, $prop, $value ) = @_;
+   if ( @_ > 2 ) {
+      $ENV{MKDEBUG} && _d("Setting $prop property");
+      $self->{$prop} = $value;
+   }
+   return $self->{$prop};
+}
+
+sub parse {
+   my ( $self, $dsn, $prev, $defaults ) = @_;
+   if ( !$dsn ) {
+      $ENV{MKDEBUG} && _d('No DSN to parse');
+      return;
+   }
+   $ENV{MKDEBUG} && _d("Parsing $dsn");
+   $prev     ||= {};
+   $defaults ||= {};
+   my %vals;
+   my %opts = %{$self->{opts}};
+   if ( $dsn !~ m/=/ && (my $p = $self->prop('autokey')) ) {
+      $ENV{MKDEBUG} && _d("Interpreting $dsn as $p=$dsn");
+      $dsn = "$p=$dsn";
+   }
+   my %hash = map { m/^(.)=(.*)$/g } split(/,/, $dsn);
+   foreach my $key ( keys %opts ) {
+      $ENV{MKDEBUG} && _d("Finding value for $key");
+      $vals{$key} = $hash{$key};
+      if ( !defined $vals{$key} && defined $prev->{$key} && $opts{$key}->{copy} ) {
+         $vals{$key} = $prev->{$key};
+         $ENV{MKDEBUG} && _d("Copying value for $key from previous DSN");
+      }
+      if ( !defined $vals{$key} ) {
+         $vals{$key} = $defaults->{$key};
+         $ENV{MKDEBUG} && _d("Copying value for $key from defaults");
+      }
+   }
+   foreach my $key ( keys %hash ) {
+      die "Unrecognized DSN part '$key' in '$dsn'\n"
+         unless exists $opts{$key};
+   }
+   if ( (my $required = $self->prop('required')) ) {
+      foreach my $key ( keys %$required ) {
+         die "Missing DSN part '$key' in '$dsn'\n" unless $vals{$key};
+      }
+   }
+   return \%vals;
+}
+
+sub as_string {
+   my ( $self, $dsn ) = @_;
+   return $dsn unless ref $dsn;
+   return join(',',
+      map  { "$_=" . ($_ eq 'p' ? '...' : $dsn->{$_}) }
+      grep { defined $dsn->{$_} && $self->{opts}->{$_} }
+      sort keys %$dsn );
+}
+
+sub usage {
+   my ( $self ) = @_;
+   my $usage
+      = "DSN syntax is key=value[,key=value...]  Allowable DSN keys:\n"
+      . "  KEY  COPY  MEANING\n"
+      . "  ===  ====  =============================================\n";
+   my %opts = %{$self->{opts}};
+   foreach my $key ( sort keys %opts ) {
+      $usage .= "  $key    "
+             .  ($opts{$key}->{copy} ? 'yes   ' : 'no    ')
+             .  ($opts{$key}->{desc} || '[No description]')
+             . "\n";
+   }
+   if ( (my $key = $self->prop('autokey')) ) {
+      $usage .= "  If the DSN is a bareword, the word is treated as the '$key' key.\n";
+   }
+   return $usage;
+}
+
+sub get_cxn_params {
+   my ( $self, $info ) = @_;
+   my $dsn;
+   my %opts = %{$self->{opts}};
+   my $driver = $self->prop('dbidriver') || '';
+   if ( $driver eq 'Pg' ) {
+      $dsn = 'DBI:Pg:dbname=' . ( $info->{D} || '' ) . ';'
+         . join(';', map  { "$opts{$_}->{dsn}=$info->{$_}" }
+                     grep { defined $info->{$_} }
+                     qw(h P));
+   }
+   else {
+      $dsn = 'DBI:mysql:' . ( $info->{D} || '' ) . ';'
+         . join(';', map  { "$opts{$_}->{dsn}=$info->{$_}" }
+                     grep { defined $info->{$_} }
+                     qw(F h P S A))
+         . ';mysql_read_default_group=mysql';
+   }
+   $ENV{MKDEBUG} && _d($dsn);
+   return ($dsn, $info->{u}, $info->{p});
+}
+
+sub fill_in_dsn {
+   my ( $self, $dbh, $dsn ) = @_;
+   my $vars = $dbh->selectall_hashref('SHOW VARIABLES', 'Variable_name');
+   my ($user, $db) = $dbh->selectrow_array('SELECT USER(), DATABASE()');
+   $user =~ s/@.*//;
+   $dsn->{h} ||= $vars->{hostname}->{Value};
+   $dsn->{S} ||= $vars->{'socket'}->{Value};
+   $dsn->{P} ||= $vars->{port}->{Value};
+   $dsn->{u} ||= $user;
+   $dsn->{D} ||= $db;
+}
+
+sub get_dbh {
+   my ( $self, $cxn_string, $user, $pass, $opts ) = @_;
+   $opts ||= {};
+   my $defaults = {
+      AutoCommit        => 0,
+      RaiseError        => 1,
+      PrintError        => 0,
+      mysql_enable_utf8 => ($cxn_string =~ m/charset=utf8/ ? 1 : 0),
+   };
+   @{$defaults}{ keys %$opts } = values %$opts;
+   $ENV{MKDEBUG} && _d($cxn_string, ' ', $user, ' ', $pass, ' {',
+      join(', ', map { "$_=>$defaults->{$_}" } keys %$defaults ), '}');
+   my $dbh = DBI->connect($cxn_string, $user, $pass, $defaults);
+   if ( my ($charset) = $cxn_string =~ m/charset=(\w+)/ ) {
+      my $sql = "/*!40101 SET NAMES $charset*/";
+      $ENV{MKDEBUG} && _d("$dbh: $sql");
+      $dbh->do($sql);
+      $ENV{MKDEBUG} && _d('Enabling charset for STDOUT');
+      if ( $charset eq 'utf8' ) {
+         binmode(STDOUT, ':utf8')
+            or die "Can't binmode(STDOUT, ':utf8'): $OS_ERROR";
+      }
+      else {
+         binmode(STDOUT) or die "Can't binmode(STDOUT): $OS_ERROR";
+      }
+   }
+   my $setvars = $self->prop('setvars');
+   if ( $cxn_string =~ m/mysql/i && $setvars ) {
+      my $sql = "SET $setvars";
+      $ENV{MKDEBUG} && _d("$dbh: $sql");
+      $dbh->do($sql);
+   }
+   $ENV{MKDEBUG} && _d('DBH info: ',
+      $dbh,
+      Dumper($dbh->selectrow_hashref(
+         'SELECT DATABASE(), CONNECTION_ID(), VERSION()/*!50038 , @@hostname*/')),
+      ' Connection info: ', ($dbh->{mysql_hostinfo} || 'undef'),
+      ' Character set info: ',
+      Dumper($dbh->selectall_arrayref(
+         'SHOW VARIABLES LIKE "character_set%"', { Slice => {}})),
+      ' $DBD::mysql::VERSION: ', $DBD::mysql::VERSION,
+      ' $DBI::VERSION: ', $DBI::VERSION,
+   );
+   return $dbh;
+}
+
+sub get_hostname {
+   my ( $self, $dbh ) = @_;
+   if ( my ($host) = ($dbh->{mysql_hostinfo} || '') =~ m/^(\w+) via/ ) {
+      return $host;
+   }
+   my ( $hostname, $one ) = $dbh->selectrow_array(
+      'SELECT /*!50038 @@hostname, */ 1');
+   return $hostname;
+}
+
+sub disconnect {
+   my ( $self, $dbh ) = @_;
+   $ENV{MKDEBUG} && $self->print_active_handles($dbh);
+   $dbh->disconnect;
+}
+
+sub print_active_handles {
+   my ( $self, $thing, $level ) = @_;
+   $level ||= 0;
+   printf("# Active %sh: %s %s %s\n", ($thing->{Type} || 'undef'), "\t" x $level,
+      $thing, (($thing->{Type} || '') eq 'st' ? $thing->{Statement} || '' : ''))
+      or die "Cannot print: $OS_ERROR";
+   foreach my $handle ( grep {defined} @{ $thing->{ChildHandles} } ) {
+      $self->print_active_handles->( $handle, $level + 1 );
+   }
+}
+
+sub _d {
+   my ( $line ) = (caller(0))[2];
+   @_ = map { defined $_ ? $_ : 'undef' } @_;
+   print "# DSNParser:$line $PID ", @_, "\n";
+}
+
+1;
+
+# ###########################################################################
+# End DSNParser package
+# ###########################################################################
+
+# ###########################################################################
+# OptionParser package 1967
+# ###########################################################################
+use strict;
+use warnings FATAL => 'all';
+
+package OptionParser;
+
+use Getopt::Long;
+use List::Util qw(max);
+use English qw(-no_match_vars);
+
+sub new {
+   my ( $class, @opts ) = @_;
+   my %key_seen;
+   my %long_seen;
+   my %key_for;
+   my %defaults;
+   my @mutex;
+   my @atleast1;
+   my %long_for;
+   my %disables;
+   my %copyfrom;
+   unshift @opts,
+      { s => 'help',    d => 'Show this help message' },
+      { s => 'version', d => 'Output version information and exit' };
+   foreach my $opt ( @opts ) {
+      if ( ref $opt ) {
+         my ( $long, $short ) = $opt->{s} =~ m/^([\w-]+)(?:\|([^!+=]*))?/;
+         $opt->{k} = $short || $long;
+         $key_for{$long} = $opt->{k};
+         $long_for{$opt->{k}} = $long;
+         $long_for{$long} = $long;
+         $opt->{l} = $long;
+         die "Duplicate option $opt->{k}" if $key_seen{$opt->{k}}++;
+         die "Duplicate long option $opt->{l}" if $long_seen{$opt->{l}}++;
+         $opt->{t} = $short;
+         $opt->{n} = $opt->{s} =~ m/!/;
+         $opt->{g} ||= 'o';
+         if ( (my ($y) = $opt->{s} =~ m/=([mdHhAaz])/) ) {
+            $ENV{MKDEBUG} && _d("Option $opt->{k} type: $y");
+            $opt->{y} = $y;
+            $opt->{s} =~ s/=./=s/;
+         }
+         if ( $opt->{d} =~ m/required/ ) {
+            $opt->{r} = 1;
+            $ENV{MKDEBUG} && _d("Option $opt->{k} is required");
+         }
+         if ( (my ($def) = $opt->{d} =~ m/default\b(?: ([^)]+))?/) ) {
+            $defaults{$opt->{k}} = defined $def ? $def : 1;
+            $ENV{MKDEBUG} && _d("Option $opt->{k} has a default");
+         }
+         if ( (my ($dis) = $opt->{d} =~ m/(disables .*)/) ) {
+            $disables{$opt->{k}} = [ $class->get_participants($dis) ];
+            $ENV{MKDEBUG} && _d("Option $opt->{k} $dis");
+         }
+      }
+      else { # It's an instruction.
+
+         if ( $opt =~ m/at least one|mutually exclusive|one and only one/ ) {
+            my @participants = map {
+                  die "No such option '$_' in $opt" unless $long_for{$_};
+                  $long_for{$_};
+               } $class->get_participants($opt);
+            if ( $opt =~ m/mutually exclusive|one and only one/ ) {
+               push @mutex, \@participants;
+               $ENV{MKDEBUG} && _d(@participants, ' are mutually exclusive');
+            }
+            if ( $opt =~ m/at least one|one and only one/ ) {
+               push @atleast1, \@participants;
+               $ENV{MKDEBUG} && _d(@participants, ' require at least one');
+            }
+         }
+         elsif ( $opt =~ m/default to/ ) {
+            my @participants = map {
+                  die "No such option '$_' in $opt" unless $long_for{$_};
+                  $key_for{$_};
+               } $class->get_participants($opt);
+            $copyfrom{$participants[0]} = $participants[1];
+            $ENV{MKDEBUG} && _d(@participants, ' copy from each other');
+         }
+
+      }
+   }
+
+   if ( $ENV{MKDEBUG} ) {
+      my $text = do {
+         local $RS = undef;
+         open my $fh, "<", $PROGRAM_NAME
+            or die "Can't open $PROGRAM_NAME: $OS_ERROR";
+         <$fh>;
+      };
+      my %used = map { $_ => 1 } $text =~ m/\$opts\{'?([\w-]+)'?\}/g;
+      my @unused;
+      my @undefined;
+      my %option_exists;
+      foreach my $opt ( @opts ) {
+         next unless ref $opt;
+         my $key = $opt->{k};
+         $option_exists{$key}++;
+         next if $opt->{l} =~ m/^(?:help|version|defaults-file|database|charset
+                                    |password|port|socket|user|host)$/x
+              || $disables{$key};
+         push @unused, $key unless $used{$key};
+      }
+      foreach my $key ( keys %used ) {
+         push @undefined, $key unless $option_exists{$key};
+      }
+      if ( @unused || @undefined ) {
+         die "The following command-line options are unused: "
+            . join(',', @unused)
+            . ' The following are undefined: '
+            . join(',', @undefined);
+      }
+   }
+
+   foreach my $dis ( keys %disables ) {
+      $disables{$dis} = [ map {
+            die "No such option '$_' while processing $dis" unless $long_for{$_};
+            $long_for{$_};
+         } @{$disables{$dis}} ];
+   }
+
+   return bless {
+      specs => [ grep { ref $_ } @opts ],
+      notes => [],
+      instr => [ grep { !ref $_ } @opts ],
+      mutex => \@mutex,
+      defaults => \%defaults,
+      long_for => \%long_for,
+      atleast1 => \@atleast1,
+      disables => \%disables,
+      key_for  => \%key_for,
+      copyfrom => \%copyfrom,
+      strict   => 1,
+      groups   => [ { k => 'o', d => 'Options' } ],
+   }, $class;
+}
+
+sub get_participants {
+   my ( $self, $str ) = @_;
+   my @participants;
+   foreach my $thing ( $str =~ m/(--?[\w-]+)/g ) {
+      if ( (my ($long) = $thing =~ m/--(.+)/) ) {
+         push @participants, $long;
+      }
+      else {
+         foreach my $short ( $thing =~ m/([^-])/g ) {
+            push @participants, $short;
+         }
+      }
+   }
+   $ENV{MKDEBUG} && _d("Participants for $str: ", @participants);
+   return @participants;
+}
+
+sub parse {
+   my ( $self, %defaults ) = @_;
+   my @specs = @{$self->{specs}};
+   my %factor_for = (k => 1_024, M => 1_048_576, G => 1_073_741_824);
+
+   my %opt_seen;
+   my %vals = %{$self->{defaults}};
+   @vals{keys %defaults} = values %defaults;
+   foreach my $spec ( @specs ) {
+      $vals{$spec->{k}} = undef unless defined $vals{$spec->{k}};
+      $opt_seen{$spec->{k}} = 1;
+   }
+
+   foreach my $key ( keys %defaults ) {
+      die "Cannot set default for non-existent option '$key'\n"
+         unless $opt_seen{$key};
+   }
+
+   Getopt::Long::Configure('no_ignore_case', 'bundling');
+   GetOptions( map { $_->{s} => \$vals{$_->{k}} } @specs )
+      or $self->error('Error parsing options');
+
+   if ( $vals{version} ) {
+      my $prog = $self->prog;
+      printf("%s  Ver %s Distrib %s Changeset %s\n",
+         $prog, $main::VERSION, $main::DISTRIB, $main::SVN_REV)
+         or die "Cannot print: $OS_ERROR";
+      exit(0);
+   }
+
+   if ( @ARGV && $self->{strict} ) {
+      $self->error("Unrecognized command-line options @ARGV");
+   }
+
+   foreach my $dis ( grep { defined $vals{$_} } keys %{$self->{disables}} ) {
+      my @disses = map { $self->{key_for}->{$_} } @{$self->{disables}->{$dis}};
+      $ENV{MKDEBUG} && _d("Unsetting options: ", @disses);
+      @vals{@disses} = map { undef } @disses;
+   }
+
+   foreach my $spec ( grep { $_->{r} } @specs ) {
+      if ( !defined $vals{$spec->{k}} ) {
+         $self->error("Required option --$spec->{l} must be specified");
+      }
+   }
+
+   foreach my $mutex ( @{$self->{mutex}} ) {
+      my @set = grep { defined $vals{$self->{key_for}->{$_}} } @$mutex;
+      if ( @set > 1 ) {
+         my $note = join(', ',
+            map { "--$self->{long_for}->{$_}" }
+                @{$mutex}[ 0 .. scalar(@$mutex) - 2] );
+         $note .= " and --$self->{long_for}->{$mutex->[-1]}"
+               . " are mutually exclusive.";
+         $self->error($note);
+      }
+   }
+
+   foreach my $required ( @{$self->{atleast1}} ) {
+      my @set = grep { defined $vals{$self->{key_for}->{$_}} } @$required;
+      if ( !@set ) {
+         my $note = join(', ',
+            map { "--$self->{long_for}->{$_}" }
+                @{$required}[ 0 .. scalar(@$required) - 2] );
+         $note .= " or --$self->{long_for}->{$required->[-1]}";
+         $self->error("Specify at least one of $note");
+      }
+   }
+
+   foreach my $spec ( grep { $_->{y} && defined $vals{$_->{k}} } @specs ) {
+      my $val = $vals{$spec->{k}};
+      if ( $spec->{y} eq 'm' ) {
+         my ( $num, $suffix ) = $val =~ m/(\d+)([a-z])?$/;
+         if ( !$suffix ) {
+            my ( $s ) = $spec->{d} =~ m/\(suffix (.)\)/;
+            $suffix = $s || 's';
+            $ENV{MKDEBUG} && _d("No suffix given; using $suffix for $spec->{k} "
+               . "(value: '$val')");
+         }
+         if ( $suffix =~ m/[smhd]/ ) {
+            $val = $suffix eq 's' ? $num            # Seconds
+                 : $suffix eq 'm' ? $num * 60       # Minutes
+                 : $suffix eq 'h' ? $num * 3600     # Hours
+                 :                  $num * 86400;   # Days
+            $vals{$spec->{k}} = $val;
+            $ENV{MKDEBUG} && _d("Setting option $spec->{k} to $val");
+         }
+         else {
+            $self->error("Invalid --$spec->{l} argument");
+         }
+      }
+      elsif ( $spec->{y} eq 'd' ) {
+         $ENV{MKDEBUG} && _d("Parsing option $spec->{y} as a DSN");
+         my $from_key = $self->{copyfrom}->{$spec->{k}};
+         my $default = {};
+         if ( $from_key ) {
+            $ENV{MKDEBUG} && _d("Option $spec->{y} DSN copies from option $from_key");
+            $default = $self->{dsn}->parse($self->{dsn}->as_string($vals{$from_key}));
+         }
+         $vals{$spec->{k}} = $self->{dsn}->parse($val, $default);
+      }
+      elsif ( $spec->{y} eq 'z' ) {
+         my ($pre, $num, $factor) = $val =~ m/^([+-])?(\d+)([kMG])?$/;
+         if ( defined $num ) {
+            if ( $factor ) {
+               $num *= $factor_for{$factor};
+               $ENV{MKDEBUG} && _d("Setting option $spec->{y} to num * factor");
+            }
+            $vals{$spec->{k}} = ($pre || '') . $num;
+         }
+         else {
+            $self->error("Invalid --$spec->{l} argument");
+         }
+      }
+   }
+
+   foreach my $spec ( grep { $_->{y} } @specs ) {
+      $ENV{MKDEBUG} && _d("Treating option $spec->{k} as a list");
+      my $val = $vals{$spec->{k}};
+      if ( $spec->{y} eq 'H' || (defined $val && $spec->{y} eq 'h') ) {
+         $vals{$spec->{k}} = { map { $_ => 1 } split(',', ($val || '')) };
+      }
+      elsif ( $spec->{y} eq 'A' || (defined $val && $spec->{y} eq 'a') ) {
+         $vals{$spec->{k}} = [ split(',', ($val || '')) ];
+      }
+   }
+
+   return %vals;
+}
+
+sub error {
+   my ( $self, $note ) = @_;
+   $self->{__error__} = 1;
+   push @{$self->{notes}}, $note;
+}
+
+sub prog {
+   (my $prog) = $PROGRAM_NAME =~ m/([.A-Za-z-]+)$/;
+   return $prog || $PROGRAM_NAME;
+}
+
+sub prompt {
+   my ( $self ) = @_;
+   my $prog   = $self->prog;
+   my $prompt = $self->{prompt} || '<options>';
+   return "Usage: $prog $prompt\n";
+}
+
+sub descr {
+   my ( $self ) = @_;
+   my $prog = $self->prog;
+   my $descr  = $prog . ' ' . ($self->{descr} || '')
+          . "  For more details, please use the --help option, "
+          . "or try 'perldoc $prog' for complete documentation.";
+   $descr = join("\n", $descr =~ m/(.{0,80})(?:\s+|$)/g);
+   $descr =~ s/ +$//mg;
+   return $descr;
+}
+
+sub usage_or_errors {
+   my ( $self, %opts ) = @_;
+   if ( $opts{help} ) {
+      print $self->usage(%opts)
+         or die "Cannot print: $OS_ERROR";
+      exit(0);
+   }
+   elsif ( $self->{__error__} ) {
+      print $self->errors()
+         or die "Cannot print: $OS_ERROR";
+      exit(0);
+   }
+}
+
+sub errors {
+   my ( $self ) = @_;
+   my $usage = $self->prompt() . "\n";
+   if ( (my @notes = @{$self->{notes}}) ) {
+      $usage .= join("\n  * ", 'Errors in command-line arguments:', @notes) . "\n";
+   }
+   return $usage . "\n" . $self->descr();
+}
+
+sub usage {
+   my ( $self, %vals ) = @_;
+   my @specs = @{$self->{specs}};
+
+   my $maxl = max(map { length($_->{l}) + ($_->{n} ? 4 : 0)} @specs);
+
+   my $maxs = max(0,
+      map { length($_->{l}) + ($_->{n} ? 4 : 0)}
+      grep { $_->{t} } @specs);
+
+   my $lcol = max($maxl, ($maxs + 3));
+   my $rcol = 80 - $lcol - 6;
+   my $rpad = ' ' x ( 80 - $rcol );
+
+   $maxs = max($lcol - 3, $maxs);
+
+   my $usage = $self->descr() . "\n" . $self->prompt();
+   foreach my $g ( @{$self->{groups}} ) {
+      $usage .= "\n$g->{d}:\n";
+      foreach my $spec (
+         sort { $a->{l} cmp $b->{l} } grep { $_->{g} eq $g->{k} } @specs )
+      {
+         my $long  = $spec->{n} ? "[no]$spec->{l}" : $spec->{l};
+         my $short = $spec->{t};
+         my $desc  = $spec->{d};
+         if ( $spec->{y} && $spec->{y} eq 'm' ) {
+            my ($s) = $desc =~ m/\(suffix (.)\)/;
+            $s    ||= 's';
+            $desc =~ s/\s+\(suffix .\)//;
+            $desc .= ".  Optional suffix s=seconds, m=minutes, h=hours, "
+                   . "d=days; if no suffix, $s is used.";
+         }
+         $desc = join("\n$rpad", grep { $_ } $desc =~ m/(.{0,$rcol})(?:\s+|$)/g);
+         $desc =~ s/ +$//mg;
+         if ( $short ) {
+            $usage .= sprintf("  --%-${maxs}s -%s  %s\n", $long, $short, $desc);
+         }
+         else {
+            $usage .= sprintf("  --%-${lcol}s  %s\n", $long, $desc);
+         }
+      }
+   }
+
+   if ( (my @instr = @{$self->{instr}}) ) {
+      $usage .= join("\n", map { "  $_" } @instr) . "\n";
+   }
+   if ( $self->{dsn} ) {
+      $usage .= "\n" . $self->{dsn}->usage();
+   }
+   $usage .= "\nOptions and values after processing arguments:\n";
+   foreach my $spec ( sort { $a->{l} cmp $b->{l} } @specs ) {
+      my $val   = $vals{$spec->{k}};
+      my $type  = $spec->{y} || '';
+      my $bool  = $spec->{s} =~ m/^[\w-]+(?:\|[\w-])?!?$/;
+      $val      = $bool                     ? ( $val ? 'TRUE' : 'FALSE' )
+                : !defined $val             ? '(No value)'
+                : $type eq 'd'              ? $self->{dsn}->as_string($val)
+                : $type =~ m/H|h/           ? join(',', sort keys %$val)
+                : $type =~ m/A|a/           ? join(',', @$val)
+                :                             $val;
+      $usage .= sprintf("  --%-${lcol}s  %s\n", $spec->{l}, $val);
+   }
+   return $usage;
+}
+
+sub pod_to_spec {
+   my ( $self, $file ) = @_;
+
+   my %types = (
+      'time' => 'm',
+      'int'  => 'i',
+      string => 's',
+      hash   => 'h',
+      Hash   => 'H',
+      array  => 'a',
+      Array  => 'A',
+      size   => 'z',
+      DSN    => 'd',
+      float  => 'f',
+   );
+
+   my @spec = ();
+   my @special_options = ();
+   $file ||= __FILE__;
+   open my $fh, "<", $file or die "Can't open $file: $OS_ERROR";
+   my $para;
+
+   local $INPUT_RECORD_SEPARATOR = '';
+   while ( $para = <$fh> ) {
+      next unless $para =~ m/^=head1 OPTIONS/;
+      last;
+   }
+
+   while ( $para = <$fh> ) {
+      $ENV{MKDEBUG} && _d($para);
+      last if $para =~ m/^=over/;
+      chomp $para;
+      $para =~ s/\s+/ /g;
+      $para =~ s/[LC]<"?([^">]+)"?>/$1/g;
+      push @special_options, $para;
+   }
+
+   do {
+      if ( my ($option) = $para =~ m/^=item --(.*)/ ) {
+         $ENV{MKDEBUG} && _d($para);
+         my %props;
+         $para = <$fh>;
+         if ( $para =~ m/: / ) {
+            $para =~ s/\s+\Z//g;
+            %props = map { split(/: /, $_) } split(/; /, $para);
+            if ( $props{'short form'} ) {
+               $props{'short form'} =~ s/-//;
+            }
+            $para = <$fh>;
+         }
+         $para =~ s/\s+\Z//g;
+         $para =~ s/\s+/ /g;
+         $para =~ s/[LC]<"?([^">]+)"?>/$1/g;
+         if ( $para =~ m/^[^.]+\.$/ ) {
+            $para =~ s/\.$//;
+         }
+         push @spec, {
+            s => $option
+               . ( $props{'short form'} ? '|' . $props{'short form'} : '' )
+               . ( $props{'negatable'}  ? '!'                        : '' )
+               . ( $props{'cumulative'} ? '+'                        : '' )
+               . ( $props{type}         ? '=' . $types{$props{type}} : '' ),
+            d => $para
+               . (defined $props{default} ? " (default $props{default})" : ''),
+         };
+      }
+      while ( $para = <$fh> ) {
+         last unless $para;
+         if ( $para =~ m/^=head1/ ) {
+            $para = undef; # Can't 'last' out of a do {} block.
+            last;
+         }
+         last if $para =~ m/^=item --/;
+      }
+   } while ( $para );
+
+   close $fh;
+   return @spec, @special_options;
+}
+
+sub prompt_noecho {
+   shift @_ if ref $_[0] eq __PACKAGE__;
+   my ( $prompt ) = @_;
+   local $OUTPUT_AUTOFLUSH = 1;
+   print $prompt
+      or die "Cannot print: $OS_ERROR";
+   my $response;
+   eval {
+      require Term::ReadKey;
+      Term::ReadKey::ReadMode('noecho');
+      chomp($response = <STDIN>);
+      Term::ReadKey::ReadMode('normal');
+      print "\n"
+         or die "Cannot print: $OS_ERROR";
+   };
+   if ( $EVAL_ERROR ) {
+      die "Cannot read response; is Term::ReadKey installed? $EVAL_ERROR";
+   }
+   return $response;
+}
+
+sub groups {
+   my ( $self, @groups ) = @_;
+   push @{$self->{groups}}, @groups;
+}
+
+sub _d {
+   my ( $line ) = (caller(0))[2];
+   print "# OptionParser:$line $PID ", @_, "\n";
+}
+
+if ( $ENV{MKDEBUG} ) {
+   print '# ', $^X, ' ', $], "\n";
+   my $uname = `uname -a`;
+   if ( $uname ) {
+      $uname =~ s/\s+/ /g;
+      print "# $uname\n";
+   }
+   printf("# %s  Ver %s Distrib %s Changeset %s line %d\n",
+      $PROGRAM_NAME, ($main::VERSION || ''), ($main::DISTRIB || ''),
+      ($main::SVN_REV || ''), __LINE__);
+   print('# Arguments: ',
+      join(' ', map { my $a = "_[$_]_"; $a =~ s/\n/\n# /g; $a; } @ARGV), "\n");
+}
+
+1;
+
+# ###########################################################################
+# End OptionParser package
+# ###########################################################################
+
+# ###########################################################################
+# Quoter package 1755
+# ###########################################################################
+use strict;
+use warnings FATAL => 'all';
+
+package Quoter;
+
+use English qw(-no_match_vars);
+
+sub new {
+   my ( $class ) = @_;
+   bless {}, $class;
+}
+
+sub quote {
+   my ( $self, @vals ) = @_;
+   foreach my $val ( @vals ) {
+      $val =~ s/`/``/g;
+   }
+   return join('.', map { '`' . $_ . '`' } @vals);
+}
+
+sub quote_val {
+   my ( $self, @vals ) = @_;
+   return join(', ',
+      map {
+         if ( defined $_ ) {
+            $_ =~ s/(['\\])/\\$1/g;
+            $_ eq '' || $_ =~ m/^0|\D/ ? "'$_'" : $_;
+         }
+         else {
+            'NULL';
+         }
+      } @vals
+   );
+}
+
+1;
+
+# ###########################################################################
+# End Quoter package
+# ###########################################################################
+
+package main;
+
+use DBI;
+use English qw(-no_match_vars);
+
+$OUTPUT_AUTOFLUSH = 1;
+
+# TODO: implement processes too; then it can be a stale query sniper.
+# TODO: add --haskey(col), add --hascol
+# TODO: add --keepgoing (in case of an error on --exec)
+# TODO: make a way to get a list of DSNs out of a database table, and iterate
+# over them.
+
+# ############################################################################
+# Get configuration information.
+# ############################################################################
+
+my @opt_spec = (
+   { s => 'askpass',           g => 'o', d => 'Prompt for password for connections' },
+   { s => 'case-insensitive',  g => 'o', d => 'Regular expression patterns ignore case' },
+   { s => 'charset|A=s',       g => 'o', d => 'Default character set' },
+   { s => 'daystart',          g => 'o', d => 'Measure times from the beginning of the day' },
+   { s => 'defaults-file|F=s', g => 'o', d => 'Only read mysql options from the given file' },
+   { s => 'host|h=s',          g => 'o', d => 'Connect to host' },
+   { s => 'or',                g => 'o', d => 'Combine tests with OR, not AND' },
+   { s => 'password|p=s',      g => 'o', d => 'Password to use when connecting' },
+   { s => 'port|P=i',          g => 'o', d => 'Port number to use for connection' },
+   { s => 'quote!',            g => 'o', d => 'Quote database and table names (default)' },
+   { s => 'setvars=s',         g => 'o', d => 'Set these MySQL variables (default wait_timeout=10000)' },
+   { s => 'socket|S=s',        g => 'o', d => 'Socket file to use for connection' },
+   { s => 'user|u=s',          g => 'o', d => 'User for login if not current user' },
+
+   { s => 'autoinc=s',         g => 't', d => 'Table next AUTO_INCREMENT is n' },
+   { s => 'avgrowlen=z',       g => 't', d => 'Table avg row len is n bytes' },
+   { s => 'checksum=s',        g => 't', d => 'Table checksum is n' },
+   { s => 'cmin=z',            g => 't', d => 'Table was created n minutes ago' },
+   { s => 'collation=s',       g => 't', d => 'Table collation matches pattern' },
+   { s => 'comment=s',         g => 't', d => 'Table comment matches pattern' },
+   { s => 'createopts=s',      g => 't', d => 'Table create option matches pattern' },
+   { s => 'ctime=z',           g => 't', d => 'Table was created n days ago' },
+   { s => 'datasize=z',        g => 't', d => 'Table data uses n bytes of space' },
+   { s => 'datafree=z',        g => 't', d => 'Table has n bytes of free space' },
+   { s => 'dblike=s',          g => 't', d => 'Database name matches SQL LIKE pattern' },
+   { s => 'dbregex=s',         g => 't', d => 'Database name matches this pattern' },
+   { s => 'empty',             g => 't', d => 'Table has no rows' },
+   { s => 'engine=s',          g => 't', d => 'Table storage engine matches this pattern' },
+   { s => 'indexsize=z',       g => 't', d => 'Table indexes use n bytes of space' },
+   { s => 'kmin=z',            g => 't', d => 'Table was checked n minutes ago' },
+   { s => 'ktime=z',           g => 't', d => 'Table was checked n days ago' },
+   { s => 'mmin=z',            g => 't', d => 'Table was last modified n minutes ago' },
+   { s => 'mtime=z',           g => 't', d => 'Table was last modified n days ago' },
+   { s => 'pid=s',             g => 't', d => 'Table name has nonexistent MySQL connection ID' },
+   { s => 'rows=z',            g => 't', d => 'Table has n rows' },
+   { s => 'rowformat=s',       g => 't', d => 'Table row format matches pattern' },
+   { s => 'sid=s',             g => 't', d => 'Table name matches server ID' },
+   { s => 'tablesize=z',       g => 't', d => 'Table (data+index) uses n bytes of space' },
+   { s => 'tbllike=s',         g => 't', d => 'Table name matches SQL LIKE pattern' },
+   { s => 'tblregex=s',        g => 't', d => 'Table name matches this pattern' },
+   { s => 'tblversion=z',      g => 't', d => 'Table version is n' },
+
+   { s => 'exec=s',            g => 'a', d => 'Execute this SQL with each item found' },
+   { s => 'exec_plus=s',       g => 'a', d => 'Execute this SQL with all items at once' },
+   { s => 'exec_dsn=s',        g => 'a', d => 'Execute --exec commands on this DBH' },
+   { s => 'print',             g => 'a', d => 'Print the database and table name' },
+   { s => 'printf=s',          g => 'a', d => 'Print format, with escapes and directives' },
+
+);
+
+# Make sure OptionParser understands that these options are used.
+# $opts{cmin} $opts{ctime} $opts{empty} $opts{kmin} $opts{ktime} 
+# $opts{mmin} $opts{mtime} $opts{exec} $opts{printf} 
+
+my $q          = new Quoter();
+my $opt_parser = new OptionParser(@opt_spec);
+$opt_parser->{prompt} = '[option]... [database...]';
+$opt_parser->{strict} = 0;
+$opt_parser->{descr} = 'searches for MySQL tables and executes actions, like '
+   . 'GNU find.  The default action is to print the database and table name.';
+$opt_parser->groups(
+   { k => 't', d => 'Tests' },
+   { k => 'a', d => 'Actions' },
+);
+my %opts = $opt_parser->parse();
+
+if ( $opts{pid} && $opts{pid} !~ m/\(\\d\+\)/ ) { # Ensure there is a capture group
+   $opt_parser->error("--pid regex doesn't capture digits with (\\d+)");
+}
+
+if ( $opts{sid} && $opts{sid} !~ m/\(\\d\+\)/ ) { # Ensure there is a capture group
+   $opt_parser->error("--sid regex doesn't capture digits with (\\d+)");
+}
+
+$opt_parser->usage_or_errors(%opts);
+
+my %arg_for = (
+   a => 'Auto_increment',
+   A => 'Avg_row_length',
+   c => 'Checksum',
+   C => 'Create_time',
+   D => 'Database',
+   d => 'Data_length',
+   E => 'Engine',
+   F => 'Data_free',
+   f => 'Innodb_free',
+   I => 'Index_length',
+   K => 'Check_time',
+   L => 'Collation',
+   M => 'Max_data_length',
+   N => 'Name',
+   O => 'Comment',
+   P => 'Create_options',
+   R => 'Row_format',
+   S => 'Rows',
+   T => 'Table_length',
+   U => 'Update_time',
+   V => 'Version',
+);
+
+# Interpolate strings for printf and exec.  At the same time discover whether
+# I must use SHOW TABLE STATUS (slower than SHOW TABLES) to fetch data.
+my %fmt_for;  # Interpolated strings
+my $showstat
+   = grep { $opts{$_} } qw( 
+      autoinc avgrowlen checksum cmin collation comment createopts ctime
+      datasize datafree empty engine indexsize kmin ktime mmin mtime rows
+      rowformat tablesize tblversion);
+foreach my $thing (qw(exec printf)) {
+   next unless $opts{$thing};
+   my ($str, $arg_names) = interpolate($opts{$thing});
+   $fmt_for{$thing} = { str => $str, arg_names => $arg_names };
+   if ( grep { $_ !~ m/^(Database|Name)$/ } @$arg_names ) {
+      $showstat = 1;
+   }
+}
+
+# ############################################################################
+# Lookup tables and global variables
+# ############################################################################
+my %time_for;     # Holds time constants for mmin, mtime etc
+my %connections;  # Holds a list of thread IDs connected
+my $server_id;    # Holds the server's @@SERVER_ID
+my $dbh;          # This program's $dbh
+my $exec_dbh;     # The $dbh to use for exec and exec_plus
+
+# Functions to call while evaluating tests.
+my %test_for = (
+   autoinc => sub {
+      my ( $table ) = @_;
+      return test_number($table, 'Auto_increment', $opts{autoinc});
+   },
+   avgrowlen => sub {
+      my ( $table ) = @_;
+      return test_number($table, 'Avg_row_length', $opts{avgrowlen});
+   },
+   checksum => sub {
+      my ( $table ) = @_;
+      return test_number($table, 'Checksum', $opts{checksum});
+   },
+   cmin => sub {
+      my ( $table ) = @_;
+      return test_date($table, 'Create_time', 'cmin');
+   },
+   collation => sub {
+      my ( $table ) = @_;
+      return test_regex($table, 'Collation', $opts{collation});
+   },
+   comment => sub {
+      my ( $table ) = @_;
+      return test_regex($table, 'Comment', $opts{comment});
+   },
+   createopts => sub {
+      my ( $table ) = @_;
+      return test_regex($table, 'Create_options', $opts{createopts});
+   },
+   ctime => sub {
+      my ( $table ) = @_;
+      return test_date($table, 'Create_time', 'ctime');
+   },
+   datafree => sub {
+      my ( $table ) = @_;
+      return test_number($table, 'Data_free', $opts{datafree});
+   },
+   datasize => sub {
+      my ( $table ) = @_;
+      return test_number($table, 'Data_length', $opts{datasize});
+   },
+   dbregex => sub {
+      my ( $table ) = @_;
+      return test_regex($table, 'Database', $opts{dbregex});
+   },
+   empty => sub {
+      my ( $table ) = @_;
+      return test_number($table, 'Rows', '0');
+   },
+   engine => sub {
+      my ( $table ) = @_;
+      return test_regex($table, 'Engine', $opts{engine});
+   },
+   indexsize => sub {
+      my ( $table ) = @_;
+      return test_number($table, 'Index_length', $opts{indexsize});
+   },
+   kmin => sub {
+      my ( $table ) = @_;
+      return test_date($table, 'Check_time', 'kmin');
+   },
+   ktime => sub {
+      my ( $table ) = @_;
+      return test_date($table, 'Check_time', 'ktime');
+   },
+   mmin => sub {
+      my ( $table ) = @_;
+      return test_date($table, 'Update_time', 'mmin');
+   },
+   mtime => sub {
+      my ( $table ) = @_;
+      return test_date($table, 'Update_time', 'mtime');
+   },
+   pid => sub {
+      my ( $table ) = @_;
+      my $test = $opts{'case-insensitive'} ? "(?i)$opts{pid}" : $opts{pid};
+      my ( $pid ) = $table->{Name} =~ m/$test/;
+      return $pid && !exists $connections{$pid};
+   },
+   rows => sub {
+      my ( $table ) = @_;
+      return test_number($table, 'Rows', $opts{rows});
+   },
+   rowformat => sub {
+      my ( $table ) = @_;
+      return test_regex($table, 'Row_format', $opts{rowformat});
+   },
+   sid => sub {
+      my ( $table ) = @_;
+      my $test = $opts{'case-insensitive'} ? "(?i)$opts{sid}" : $opts{sid};
+      my ( $sid ) = $table->{Name} =~ m/$test/;
+      return $sid && $sid == $server_id;
+   },
+   tablesize => sub {
+      my ( $table ) = @_;
+      return test_number($table, 'Table_length', $opts{tablesize});
+   },
+   tblregex => sub {
+      my ( $table ) = @_;
+      return test_regex($table, 'Name', $opts{tblregex});
+   },
+   tblversion => sub {
+      my ( $table ) = @_;
+      return test_number($table, 'Version', $opts{tblversion});
+   },
+);
+
+# Functions to call when doing actions
+my %action_for = (
+   print => sub {
+      my ( $table ) = @_;
+      print "$table->{Database}.$table->{Name}\n";
+   },
+   exec => sub {
+      my ( $table ) = @_;
+      my $sql = sprintf($fmt_for{exec}->{str},
+         map { defined $_ ? $_ : '' }
+         @{$table}{@{$fmt_for{exec}->{arg_names}}});
+      $ENV{MKDEBUG} && _d($sql);
+      $exec_dbh->do($sql);
+   },
+   printf => sub {
+      my ( $table ) = @_;
+      printf($fmt_for{printf}->{str},
+         map { defined $_ ? $_ : '' }
+         @{$table}{@{$fmt_for{printf}->{arg_names}}});
+   },
+);
+
+# Sanity check to catch misspellings...
+foreach my $test ( keys %test_for, keys %action_for ) {
+   die "No such option $test" unless grep { $_->{k} eq $test } @opt_spec;
+}
+
+# ############################################################################
+# Get ready to do the main work.
+# ############################################################################
+
+# Connect to the database
+if ( !$opts{p} && $opts{askpass} ) {
+   $opts{p} = OptionParser::prompt_noecho("Enter password: ");
+}
+
+my $dp = new DSNParser();
+$dp->prop('setvars', $opts{setvars});
+$dbh = $dp->get_dbh( $dp->get_cxn_params(\%opts), { AutoCommit => 1 } );
+if ( $opts{exec_dsn} ) {
+   $exec_dbh = $dp->get_dbh(
+      $dp->get_cxn_params($dp->parse($opts{exec_dsn}, \%opts)),
+      { AutoCommit => 1 },
+   );
+}
+else {
+   $exec_dbh = $dbh;
+}
+
+# If no other action was given, the default action is to print.
+if ( !grep { $opts{$_} } qw( exec exec_plus print printf ) ) {
+   $opts{print} = 1;
+}
+
+# Figure out the time referred to by date/time options
+my $basetime;
+foreach my $option ( grep { defined $opts{$_} } qw(cmin ctime kmin ktime mmin mtime) ) {
+   # Initialize a consistent point in time
+   $basetime ||=
+      $dbh->selectcol_arrayref(
+         "SELECT " . ($opts{daystart} ? 'CURRENT_DATE' : 'CURRENT_TIMESTAMP')
+      )->[0];
+
+   my ($val) = $opts{$option} =~ m/(\d+)/;
+   my $inter = $option =~ m/min/ ? 'MINUTE' : 'DAY';
+   my $query = "SELECT DATE_SUB('$basetime', INTERVAL $val $inter)";
+   $time_for{$option} = $dbh->selectcol_arrayref($query)->[0];
+}
+
+# Fetch and save a list of processes currently running.
+if ( $opts{pid} ) {
+   # Ensure I have the PROCESS privilege.
+   my $proc =
+      grep { m/ALL PRIVILEGES.*?\*\.\*|PROCESS/ }
+      @{$dbh->selectcol_arrayref('SHOW GRANTS')};
+   if ( !$proc ) {
+      die "--pid requires the PROCESS privilege for safety.\n";
+   }
+}
+
+($server_id) = $dbh->selectrow_array('SELECT @@SERVER_ID');
+
+# ############################################################################
+# Go do it.
+# ############################################################################
+my @databases = @ARGV         ? @ARGV
+              : $opts{dblike} ? @{$dbh->selectcol_arrayref('SHOW DATABASES LIKE ?', {}, $opts{dblike})}
+              :                 @{$dbh->selectcol_arrayref('SHOW DATABASES')};
+
+my @exec_plus;
+DATABASE:
+foreach my $database ( @databases ) {
+   next DATABASE if $database =~ m/^(?:information_schema|lost\+found)$/mi;
+
+   my $sta = $showstat ? ' STATUS' : 'S';
+   my $sth = $opts{tbllike}
+           ? $dbh->prepare("SHOW TABLE$sta FROM `$database` LIKE ?")
+           : $dbh->prepare("SHOW TABLE$sta FROM `$database`");
+
+   $sth->execute($opts{tbllike} || ());
+   my @tables = @{$sth->fetchall_arrayref({})};
+
+   # Must re-fetch every time; there are too many ways things can go wrong
+   # otherwise (for example, the counter wraps over the unsigned int boundary).
+   if ( $opts{pid} ) {
+      %connections = map { $_ => 1 }
+         @{$dbh->selectcol_arrayref('SHOW FULL PROCESSLIST')};
+   }
+
+   # Make results uniform across MySQL versions, and generate additional
+   # properties.
+   foreach my $table ( @tables ) {
+      if ( $showstat ) {
+         my ($ib_free)            = $table->{Comment} && $table->{Comment} =~ m/InnoDB free: (\d+) kB/;
+         $table->{Engine}       ||= $table->{Type};
+         $table->{Table_length}   = ($table->{Index_length} || 0) + ($table->{Data_length} || 0);
+         $table->{Innodb_free}    = $ib_free ? 1_024 * $ib_free : undef;
+         delete $table->{Type};
+      }
+      else {
+         my ($name) = values %$table;
+         $table = { Name => $name };
+      }
+      $table->{Database} = $database;
+   }
+
+   # Apply the tests to find the matching tables
+   @tables = grep {
+      my $table = $_;
+      my @tests = grep { $opts{$_} } keys %test_for;
+      !@tests || ($opts{or} ? any($table, @tests) : all($table, @tests));
+   } @tables;
+
+   # Quote database and table names if desired
+   if ( $opts{quote} ) {
+      foreach my $table ( @tables ) {
+         $table->{Database} = $q->quote($table->{Database});
+         $table->{Name}     = $q->quote($table->{Name});
+      }
+   }
+
+   foreach my $table ( @tables ) {
+      my @actions = grep { $opts{$_} } keys %action_for;
+      foreach my $action ( @actions ) {
+         $action_for{$action}->($table);
+      }
+   }
+
+   push @exec_plus, @tables;
+}
+
+# Handle exec_plus
+if ( $opts{exec_plus} ) {
+   my $table_list = join(', ', map { "$_->{Database}.$_->{Name}" } @exec_plus);
+   (my $sql = $opts{exec_plus}) =~ s/%s/$table_list/g;
+   $exec_dbh->do($sql);
+}
+
+# ############################################################################
+# Subroutines
+# ############################################################################
+
+# One test is true
+sub any {
+   my ( $table, @tests ) = @_;
+   foreach my $test ( @tests ) {
+      return 1 if $test_for{$test}->($table);
+   }
+   return 0;
+}
+
+# All tests are true
+sub all {
+   my ( $table, @tests ) = @_;
+   foreach my $test ( @tests ) {
+      return 0 unless $test_for{$test}->($table);
+   }
+   return 1;
+}
+
+# Checks the given property of the given table to see if it passes the test
+sub test_number {
+   my ( $table, $prop, $test ) = @_;
+   my ($num) = $test =~ m/(\d+)/;
+   return defined $table->{$prop} && (
+         ( $test =~ m/-/  && $table->{$prop} < $num )
+      || ( $test =~ m/\+/ && $table->{$prop} > $num )
+      || (                   $table->{$prop} == $num ));
+}
+
+# Checks the given property of the given table to see if it passes the test
+sub test_date {
+   my ( $table, $prop, $test ) = @_;
+   return defined $table->{$prop} && (
+         ( $opts{$test} =~ m/-/  && $table->{$prop} gt $time_for{$test} )
+      || ( $opts{$test} =~ m/\+/ && $table->{$prop} lt $time_for{$test} )
+      || (                          $table->{$prop} eq $time_for{$test} ));
+}
+
+# Checks the given property of the given table to see if it passes the test
+sub test_regex {
+   my ( $table, $prop, $test ) = @_;
+   if ( $opts{'case-insensitive'} ) {
+      $test = "(?i)$test";
+   }
+   return defined $table->{$prop} && $table->{$prop} =~ m/$test/;
+}
+
+# Does string-interpolation and stuff.  Returns the string and a list of the
+# properties that go into the resulting placeholders.
+sub interpolate {
+   my ( $str ) = @_;
+   my @arg_names;
+
+   # Replace % directives
+   $str =~ s/%(.)/(exists $arg_for{$1} && push @arg_names, $arg_for{$1} ) ? '\%s' : "$1"/xge;
+
+   # Get Perl to interpolate escape sequences
+   $str =~ s/(?<!\\)"/\\"/g;
+   $str = eval qq{"$str"};
+   return ( $str, \@arg_names );
+}
+
+sub expand {
+   my ( $test ) = @_;
+   my %factor_for = (k => 1_024, M => 1_048_576, G => 1_073_741_824);
+   my ($pre, $num, $factor) = $test =~ m/([+-])?(\d+)([kMG])?/;
+   if ( $factor ) {
+      $num *= $factor_for{$factor};
+   }
+   return "$pre$num";
+}
+
+sub _d {
+   my ( $line ) = (caller(0))[2];
+   @_ = map { defined $_ ? $_ : 'undef' } @_;
+   print "# main:$line $PID ", @_, "\n";
+}
+
+# ############################################################################
+# Documentation
+# ############################################################################
+
+=pod
+
+=head1 NAME
+
+mk-find - Find MySQL tables and execute actions, like GNU find.
+
+=head1 DESCRIPTION
+
+mk-find looks for MySQL tables that pass the tests you specify, and executes
+the actions you specify.  The default action is to print the database and table
+name to STDOUT.
+
+mk-find is simpler than GNU find.  It doesn't allow you to specify
+complicated expressions on the command line.
+
+mk-find only looks for and processes tables.  If you need it to do
+other things, like triggers or columns, file a bug report and I'll add the
+features.
+
+mk-find uses SHOW TABLES when possible, and SHOW TABLE STATUS when needed.
+
+=head1 DOWNLOADING
+
+You can download Maatkit from Google Code at
+L<http://code.google.com/p/maatkit/>, or you can get any of the tools
+easily with a command like the following:
+
+   wget http://www.maatkit.org/get/toolname
+   or
+   wget http://www.maatkit.org/trunk/toolname
+
+Where C<toolname> can be replaced with the name (or fragment of a name) of any
+of the Maatkit tools.  Once downloaded, they're ready to run; no installation is
+needed.  The first URL gets the latest released version of the tool, and the
+second gets the latest trunk code from Subversion.
+
+=head1 OPTIONS
+
+There are three kinds of options: normal options, which determine some behavior
+or setting; tests, which determine whether a table should be included in the
+list of tables found; and actions, which do something to the tables mk-find
+finds.
+
+mk-find uses standard Getopt::Long option parsing, so you should use double
+dashes in front of long option names, unlike GNU find.
+
+=head2 OPTIONS
+
+=over
+
+=item --askpass
+
+Prompt for a password when connecting to MySQL.
+
+=item --case-insensitive
+
+Specifies that all regular expression searches are case-insensitive.
+
+=item --charset
+
+Enables character set settings in Perl and MySQL.  If the value is C<utf8>, sets
+Perl's binmode on STDOUT to utf8, passes the C<mysql_enable_utf8> option to
+DBD::mysql, and runs C<SET NAMES UTF8> after connecting to MySQL.  Any other
+value sets binmode on STDOUT without the utf8 layer, and runs C<SET NAMES> after
+connecting to MySQL.
+
+=item --daystart
+
+Measure times (for L<"--mmin">, etc) from the beginning of today rather than from the
+current time.
+
+=item --defaults-file
+
+If you specify this option, only this file is read for MySQL default options;
+otherwise all the default files will be read.
+
+=item --help
+
+Displays a help message.
+
+=item --host
+
+Connect to host.
+
+=item --or
+
+By default, tests are evaluated as though there were an AND between them.  This
+option switches it to OR.
+
+Option parsing is not implemented by mk-find itself, so you cannot specify
+complicated expressions with parentheses and mixtures of OR and AND.
+
+=item --password
+
+The password to use when connecting.
+
+=item --port
+
+The port number to use for the connection.
+
+=item --quote
+
+This option is enabled by default.  It quotes MySQL identifier names with
+MySQL's standard backtick character.  Quoting happens after tests are run, and
+before actions are run.
+
+=item --setvars
+
+Specify any variables you want to be set immediately after connecting to MySQL.
+These will be included in a C<SET> command.
+
+=item --socket
+
+The socket file to use for the connection.
+
+=item --user
+
+The user for login if not the current user.
+
+=item --version
+
+Output version information and exit.
+
+=back
+
+=head2 TESTS
+
+Most tests check some criterion against a column of SHOW TABLE STATUS output.
+Numeric arguments can be specified as +n for greater than n, -n for less than n,
+and n for exactly n.  All numeric options can take an optional suffix multiplier
+of k, M or G (1_024, 1_048_576, and 1_073_741_824 respectively).  All patterns
+are Perl regular expressions (see 'man perlre') unless specified as SQL LIKE
+patterns.
+
+Dates and times are all measured relative to the same instant, when mk-find
+first asks the database server what time it is.  All date and time manipulation
+is done in SQL, so if you say to find tables modified 5 days ago, that
+translates to SELECT DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 5 DAY).  If you
+specify L<"--daystart">, if course it's relative to CURRENT_DATE instead.
+
+However, table sizes and other metrics are not consistent at an instant in
+time.  It can take some time for MySQL to process all the SHOW queries, and
+mk-find can't do anything about that.  These measurements are as of the
+time they're taken.
+
+If you need some test that's not in this list, file a bug report and I'll
+enhance mk-find for you.  It's really easy.
+
+=over
+
+=item --autoinc
+
+Table's next AUTO_INCREMENT is n.  This tests the Auto_increment column.
+
+=item --avgrowlen
+
+Table avg row len is n bytes.  This tests the Avg_row_length column.
+
+=item --checksum
+
+Table checksum is n.  This tests the Checksum column.
+
+=item --cmin
+
+Table was created n minutes ago.  This tests the Create_time column.
+
+=item --collation
+
+Table collation matches pattern.  This tests the Collation column.
+
+=item --comment
+
+Table comment matches pattern.  This tests the Comment column.
+
+=item --createopts
+
+Table create option matches pattern.  This tests the Create_options column.
+
+=item --ctime
+
+Table was created n days ago.  This tests the Create_time column.
+
+=item --datasize
+
+Table data uses n bytes of space.  This tests the Data_length column.
+
+=item --datafree
+
+Table has n bytes of free space.  This tests the Data_free column.
+
+=item --dblike
+
+Database name matches SQL LIKE pattern.
+
+=item --dbregex
+
+Database name matches this pattern.
+
+=item --empty
+
+Table has no rows.  This tests the Rows column.
+
+=item --engine
+
+Table storage engine matches this pattern.  This tests the Engine column, or in
+earlier versions of MySQL, the Type column.
+
+=item --indexsize
+
+Table indexes use n bytes of space.  This tests the Index_length column.
+
+=item --kmin
+
+Table was checked n minutes ago.  This tests the Check_time column.
+
+=item --ktime
+
+Table was checked n days ago.  This tests the Check_time column.
+
+=item --mmin
+
+Table was last modified n minutes ago.  This tests the Update_time column.
+
+=item --mtime
+
+Table was last modified n days ago.  This tests the Update_time column.
+
+=item --pid
+
+Table name has nonexistent MySQL connection ID.  This tests the table name for
+a pattern.  The argument to this test must be a Perl regular expression that
+captures digits like this: (\d+).  If the table name matches the pattern,
+these captured digits are taken to be the MySQL connection ID of some process.
+If the connection doesn't exist according to SHOW FULL PROCESSLIST, the test
+returns true.  If the connection ID is greater than mk-find's own
+connection ID, the test returns false for safety.
+
+Why would you want to do this?  If you use MySQL statement-based replication,
+you probably know the trouble temporary tables can cause.  You might choose to
+work around this by creating real tables with unique names, instead of
+temporary tables.  One way to do this is to append your connection ID to the
+end of the table, thusly: scratch_table_12345.  This assures the table name is
+unique and lets you have a way to find which connection it was associated
+with.  And perhaps most importantly, if the connection no longer exists, you
+can assume the connection died without cleaning up its tables, and this table
+is a candidate for removal.
+
+This how I manage scratch tables, and that's why I included this test in
+mk-find.
+
+The argument I use to L<"--pid"> is "\D_(\d+)$".  That finds tables with a series of
+numbers at the end, preceded by an underscore and some non-number character (the
+latter criterion prevents me from examining tables with a date at the end, which
+people tend to do: baron_scratch_2007_05_07 for example).  It's better to keep
+the scratch tables separate of course.
+
+If you do this, make sure the user mk-find runs as has the PROCESS privilege!
+Otherwise it will only see connections from the same user, and might think some
+tables are ready to remove when they're still in use.  For safety, mk-find
+checks this for you.
+
+See also L<"--sid">.
+
+=item --rows
+
+Table has n rows.  This tests the Rows column.
+
+=item --rowformat
+
+Table row format matches pattern.  This tests the Row_format column.
+
+=item --sid
+
+Table name contains the server ID.  If you create temporary tables with the
+naming convention explained in L<"--pid">, but also add the server ID of the
+server on which the tables are created, then you can use this pattern match to
+ensure tables are dropped only on the server they're created on.  This prevents
+a table from being accidentally dropped on a slave while it's in use (provided
+that your server IDs are all unique, which they should be for replication to
+work).
+
+For example, on the master (server ID 22) you create a table called
+scratch_table_22_12345.  If you see this table on the slave (server ID 23), you
+might think it can be dropped safely if there's no such connection 12345.  But
+if you also force the name to match the server ID with C<--sid '\D_(\d+)_\d+$'>,
+the table won't be dropped on the slave.
+
+=item --tablesize
+
+Table uses n bytes of space.  This tests the sum of the Data_length and
+Index_length columns.
+
+=item --tbllike
+
+Table name matches SQL LIKE pattern.
+
+=item --tblregex
+
+Table name matches this pattern.
+
+=item --tblversion
+
+Table version is n.  This tests the Version column.
+
+=back
+
+=head2 ACTIONS
+
+The exec_plus action happens after everything else, but otherwise actions
+happen in an indeterminate order.  If you need determinism, file a bug report
+and I'll add this feature.
+
+=over
+
+=item --exec
+
+Execute this SQL with each item found.  The SQL can contain escapes and
+formatting directives (see L<"--printf">).
+
+=item --exec_dsn
+
+Specify a DSN in key-value format to use when executing SQL with L<"--exec"> and
+L<"--exec_plus">.  Any values not specified are inherited from command-line
+arguments.
+
+=item --exec_plus
+
+Execute this SQL with all items at once.  This option is unlike L<"--exec">.  There
+are no escaping or formatting directives; there is only one special placeholder
+for the list of database and table names, %s.  The list of tables found will be
+joined together with commas and substituted wherever you place %s.
+
+You might use this, for example, to drop all the tables you found:
+
+   DROP TABLE %s
+
+This is sort of like GNU find's "-exec command {} +" syntax.  Only it's not
+totally cryptic.  And it doesn't require me to write a command-line parser.
+
+=item --print
+
+Print the database and table name, followed by a newline.  This is the default
+action if no other action is specified.
+
+=item --printf
+
+Print format on the standard output, interpreting '\' escapes and '%'
+directives.  Escapes are backslashed characters, like \n and \t.  Perl
+interprets these, so you can use any escapes Perl knows about.  Directives are
+replaced by %s, and as of this writing, you can't add any special formatting
+instructions, like field widths or alignment (though I'm musing over ways to do
+that).
+
+Here is a list of the directives.  Note that most of them simply come from
+columns of SHOW TABLE STATUS.  If the column is NULL or doesn't exist, you get
+an empty string in the output.  A % character followed by any character not in
+the following list is discarded (but the other character is printed).
+
+   CHAR DATA SOURCE        NOTES
+   ---- ------------------ ------------------------------------------
+   a    Auto_increment
+   A    Avg_row_length
+   c    Checksum
+   C    Create_time
+   D    Database           The database name in which the table lives
+   d    Data_length
+   E    Engine             In older versions of MySQL, this is Type
+   F    Data_free
+   f    Innodb_free        Parsed from the Comment field
+   I    Index_length
+   K    Check_time
+   L    Collation
+   M    Max_data_length
+   N    Name
+   O    Comment
+   P    Create_options
+   R    Row_format
+   S    Rows
+   T    Table_length       Data_length+Index_length
+   U    Update_time
+   V    Version
+
+=back
+
+=head1 EXAMPLES
+
+Find all tables created more than a day ago, which use the MyISAM engine, and
+print their names:
+
+  mk-find --ctime +1 --engine MyISAM
+
+Find InnoDB tables that haven't been updated in a month, and convert them to
+MyISAM storage engine (data warehousing, anyone?):
+
+  mk-find --mtime +30 --engine InnoDB --exec "ALTER TABLE %D.%N ENGINE=MyISAM"
+
+Find tables created by a process that no longer exists, following the name_sid_pid
+naming convention, and remove them.
+
+  mk-find --pid '\D_\d+_(\d+)$' --sid '\D_(\d+)_\d+$' --exec_plus "DROP TABLE %s"
+
+Find empty tables in the test and junk databases, and delete them:
+
+  mk-find --empty junk test --exec_plus "DROP TABLE %s"
+
+Find tables more than five gigabytes in total size:
+
+  mk-find --tablesize +5G
+
+Find all tables and print their total data and index size, and sort largest
+tables first (sort is a different program, by the way).
+
+  mk-find --printf "%T\t%D.%N\n" | sort -rn
+
+As above, but this time, insert the data back into the database for posterity:
+
+  mk-find --noquote --exec "INSERT INTO sysdata.tblsize(db, tbl, size) VALUES('%D', '%N', %T)"
+
+=head1 ENVIRONMENT
+
+The environment variable C<MKDEBUG> enables verbose debugging output in all of
+the Maatkit tools:
+
+   MKDEBUG=1 mk-....
+
+=head1 BUGS
+
+Please use Google Code Issues and Groups to report bugs or request support:
+L<http://code.google.com/p/maatkit/>.
+
+Please include the complete command-line used to reproduce the problem you are
+seeing, the version of all MySQL servers involved, the complete output of the
+tool when run with L<"--version">, and if possible, debugging output produced by
+running with the C<MKDEBUG=1> environment variable.
+
+=head1 SYSTEM REQUIREMENTS
+
+You need the following Perl modules: DBI and DBD::mysql.
+
+=head1 LICENSE
+
+This program is copyright (c) 2007 Baron Schwartz.
+Feedback and improvements are welcome (see L<"BUGS">).
+
+THIS PROGRAM IS PROVIDED "AS IS" AND WITHOUT ANY EXPRESS OR IMPLIED
+WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED WARRANTIES OF
+MERCHANTIBILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+
+This program is free software; you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, version 2; OR the Perl Artistic License.  On UNIX and similar
+systems, you can issue `man perlgpl' or `man perlartistic' to read these
+licenses.
+
+You should have received a copy of the GNU General Public License along with
+this program; if not, write to the Free Software Foundation, Inc., 59 Temple
+Place, Suite 330, Boston, MA  02111-1307  USA.
+
+=head1 AUTHOR
+
+Baron Schwartz.
+
+=head1 VERSION
+
+This manual page documents Ver 0.9.12 Distrib 2152 $Revision: 2138 $.
+
+=cut
