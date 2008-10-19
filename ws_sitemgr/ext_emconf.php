@@ -3,7 +3,7 @@
 ########################################################################
 # Extension Manager/Repository config file for ext: "ws_sitemgr"
 #
-# Auto generated 19-10-2008 03:35
+# Auto generated 19-10-2008 03:40
 #
 # Manual updates:
 # Only the data in the array - anything else is removed by next write.
