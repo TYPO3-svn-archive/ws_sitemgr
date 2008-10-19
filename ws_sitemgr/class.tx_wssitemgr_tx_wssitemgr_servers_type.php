@@ -42,8 +42,10 @@ class tx_wssitemgr_tx_wssitemgr_servers_type {
 								debug($pObj);
 */
 									// Adding an item!
-								$params['items'][] = array($pObj->sL("Added label by PHP function|Tilføjet Dansk tekst med PHP funktion"), 999);
-
+							
+								$params['items'][0] = array("Production", 1);
+								$params['items'][1] = array("Test", 2);
+								$params['items'][2] = array("Development", 3);
 								// No return - the $params and $pObj variables are passed by reference, so just change content in then and it is passed back automatically...
 							}
 						}

@@ -33,20 +33,38 @@
  * @subpackage	tx_wssitemgr
  */
 class tx_wssitemgr_tx_wssitemgr_hotels_testserver {
-							function main(&$params,&$pObj)	{
-/*								
-								debug('Hello World!',1);
-								debug('$params:',1);
-								debug($params);
-								debug('$pObj:',1);
-								debug($pObj);
-*/
-									// Adding an item!
-								$params['items'][] = array($pObj->sL("Added label by PHP function|Tilføjet Dansk tekst med PHP funktion"), 999);
+	function main(&$params,&$pObj)	{
+		GLOBAL $BE_USER;
 
-								// No return - the $params and $pObj variables are passed by reference, so just change content in then and it is passed back automatically...
-							}
-						}
+		$type = 2;
+							
+		$params['items'][0] = array("Select a server", $row['uid']);
+				
+		$res = $GLOBALS['TYPO3_DB']->exec_SELECTquery(
+        '*',         // SELECT ...
+	    'tx_wssitemgr_servers',     // FROM ...
+        '`pid` = '. $params['row']['pid'] . " AND `type` like '%". $type ."%'",    // WHERE...
+        '',            // GROUP BY...
+        'name',    // ORDER BY...
+        ''            // LIMIT to 10 rows, starting with number 5 (MySQL compat.)
+         );	
+        
+        while($row = mysql_fetch_assoc($res)) {
+			$pageinfo = t3lib_BEfunc::readPageAccess($row['pid'],$BE_USER->getPagePermsClause(1));
+
+			if ($BE_USER->doesUserHaveAccess($pageinfo,1) && $BE_USER->isInWebMount($row['pid'])) {
+			
+				$params['items'][] = array($row['name'], $row['uid']);
+				$i++;
+			}
+	    	
+		}
+		$params['items'][0] = ($i > 0)  ? array("Select a server", 0) : array("No servers available", 0);
+		
+		
+	}
+}
+	
 
 
 

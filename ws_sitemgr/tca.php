@@ -200,7 +200,7 @@ $TCA["tx_wssitemgr_domains"] = array (
 			"config" => Array (
 				"type" => "select",	
 				"foreign_table" => "tx_wssitemgr_domainaliases",	
-				"foreign_table_where" => "AND tx_wssitemgr_domainaliases.pid=###CURRENT_PID### ORDER BY tx_wssitemgr_domainaliases.uid",	
+				"foreign_table_where" => "AND tx_wssitemgr_domainaliases.name like '%###REC_FIELD_name###' AND LENGTH('###REC_FIELD_name###') > 0 AND tx_wssitemgr_domainaliases.pid=###CURRENT_PID### ORDER BY tx_wssitemgr_domainaliases.uid",	
 				"size" => 5,	
 				"minitems" => 0,
 				"maxitems" => 99,	
