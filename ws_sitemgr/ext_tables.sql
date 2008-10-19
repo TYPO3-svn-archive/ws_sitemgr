@@ -110,3 +110,27 @@ CREATE TABLE tx_wssitemgr_domainaliases (
 	PRIMARY KEY (uid),
 	KEY parent (pid)
 );
+
+
+
+#
+# Table structure for table 'tx_wssitemgr_servers'
+#
+CREATE TABLE tx_wssitemgr_servers (
+	uid int(11) NOT NULL auto_increment,
+	pid int(11) DEFAULT '0' NOT NULL,
+	tstamp int(11) DEFAULT '0' NOT NULL,
+	crdate int(11) DEFAULT '0' NOT NULL,
+	cruser_id int(11) DEFAULT '0' NOT NULL,
+	name tinytext NOT NULL,
+	host varchar(255) DEFAULT '' NOT NULL,
+	sshuser varchar(255) DEFAULT '' NOT NULL,
+	dbuser varchar(255) DEFAULT '' NOT NULL,
+	dbpass varchar(255) DEFAULT '' NOT NULL,
+	wwwrootdir varchar(255) DEFAULT '' NOT NULL,
+	type varchar(200) DEFAULT '' NOT NULL,
+	closeforhotels varchar(255) DEFAULT '' NOT NULL,
+	
+	PRIMARY KEY (uid),
+	KEY parent (pid)
+);

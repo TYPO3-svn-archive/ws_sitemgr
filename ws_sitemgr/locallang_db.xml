@@ -25,6 +25,15 @@
 			<label index="tx_wssitemgr_domainaliases">Domain aliases</label>
 			<label index="tx_wssitemgr_domainaliases.name">Name</label>
 			<label index="tx_wssitemgr_domainaliases.monitoring">Monitoring</label>
+			<label index="tx_wssitemgr_servers">Servers</label>
+			<label index="tx_wssitemgr_servers.name">Name</label>
+			<label index="tx_wssitemgr_servers.host">Host</label>
+			<label index="tx_wssitemgr_servers.sshuser">SSH user</label>
+			<label index="tx_wssitemgr_servers.dbuser">Database username</label>
+			<label index="tx_wssitemgr_servers.dbpass">Database password</label>
+			<label index="tx_wssitemgr_servers.wwwrootdir">Full path to apache rootdir  (eg. /var/www/)</label>
+			<label index="tx_wssitemgr_servers.type">Server type</label>
+			<label index="tx_wssitemgr_servers.closeforhotels">Close server for new hotels</label>
 		</languageKey>
 	</data>
 </T3locallang>

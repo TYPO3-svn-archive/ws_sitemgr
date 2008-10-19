@@ -291,4 +291,99 @@ $TCA["tx_wssitemgr_domainaliases"] = array (
 		"1" => array("showitem" => "")
 	)
 );
+
+
+
+$TCA["tx_wssitemgr_servers"] = array (
+	"ctrl" => $TCA["tx_wssitemgr_servers"]["ctrl"],
+	"interface" => array (
+		"showRecordFieldList" => "name,host,sshuser,dbuser,dbpass,wwwrootdir,type,closeforhotels"
+	),
+	"feInterface" => $TCA["tx_wssitemgr_servers"]["feInterface"],
+	"columns" => array (
+		"name" => Array (		
+			"exclude" => 1,		
+			"label" => "LLL:EXT:ws_sitemgr/locallang_db.xml:tx_wssitemgr_servers.name",		
+			"config" => Array (
+				"type" => "input",	
+				"size" => "30",	
+				"eval" => "required",
+			)
+		),
+		"host" => Array (		
+			"exclude" => 1,		
+			"label" => "LLL:EXT:ws_sitemgr/locallang_db.xml:tx_wssitemgr_servers.host",		
+			"config" => Array (
+				"type" => "input",	
+				"size" => "30",	
+				"eval" => "required,trim,uniqueInPid",
+			)
+		),
+		"sshuser" => Array (		
+			"exclude" => 1,		
+			"label" => "LLL:EXT:ws_sitemgr/locallang_db.xml:tx_wssitemgr_servers.sshuser",		
+			"config" => Array (
+				"type" => "input",	
+				"size" => "30",	
+				"eval" => "required,trim",
+			)
+		),
+		"dbuser" => Array (		
+			"exclude" => 1,		
+			"label" => "LLL:EXT:ws_sitemgr/locallang_db.xml:tx_wssitemgr_servers.dbuser",		
+			"config" => Array (
+				"type" => "input",	
+				"size" => "30",	
+				"eval" => "required,trim",
+			)
+		),
+		"dbpass" => Array (		
+			"exclude" => 1,		
+			"label" => "LLL:EXT:ws_sitemgr/locallang_db.xml:tx_wssitemgr_servers.dbpass",		
+			"config" => Array (
+				"type" => "input",	
+				"size" => "30",	
+				"eval" => "required,trim",
+			)
+		),
+		"wwwrootdir" => Array (		
+			"exclude" => 1,		
+			"label" => "LLL:EXT:ws_sitemgr/locallang_db.xml:tx_wssitemgr_servers.wwwrootdir",		
+			"config" => Array (
+				"type" => "input",	
+				"size" => "30",	
+				"eval" => "required,trim",
+			)
+		),
+		"type" => Array (		
+			"exclude" => 1,		
+			"label" => "LLL:EXT:ws_sitemgr/locallang_db.xml:tx_wssitemgr_servers.type",		
+			"config" => Array (
+				"type" => "select",
+				"items" => Array (
+					Array("LLL:EXT:ws_sitemgr/locallang_db.xml:tx_wssitemgr_servers.type.I.0", "0"),
+				),
+				"itemsProcFunc" => "tx_wssitemgr_tx_wssitemgr_servers_type->main",	
+				"size" => 5,	
+				"maxitems" => 50,
+			)
+		),
+		"closeforhotels" => Array (		
+			"exclude" => 1,		
+			"label" => "LLL:EXT:ws_sitemgr/locallang_db.xml:tx_wssitemgr_servers.closeforhotels",		
+			"config" => Array (
+				"type" => "input",	
+				"size" => "30",	
+				"checkbox" => "",	
+				"eval" => "trim",
+			)
+		),
+	),
+	"types" => array (
+		"0" => array("showitem" => "name;;;;1-1-1, host, sshuser, dbuser, dbpass, wwwrootdir, type, closeforhotels")
+	),
+	"palettes" => array (
+		"1" => array("showitem" => "")
+	)
+);
 ?>
