@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<T3locallang>
+	<meta type="array">
+		<type>database</type>
+		<description>Language labels for database tables/fields belonging to extension 'ws_sitemgr'</description>
+	</meta>
+	<data type="array">
+		<languageKey index="default" type="array">
+			<label index="tx_wssitemgr_hotels">Hotel</label>
+			<label index="tx_wssitemgr_hotels.name">Name</label>
+			<label index="tx_wssitemgr_hotels.developers">Developers</label>
+			<label index="tx_wssitemgr_hotels.productionserver">Production server</label>
+			<label index="tx_wssitemgr_hotels.testserver">Test server</label>
+			<label index="tx_wssitemgr_hotels.devserver">Development server</label>
+			<label index="tx_wssitemgr_hotels.domains">Domains</label>
+			<label index="tx_wssitemgr_hotels.dbdevmethod.I.0">Single DB</label>
+			<label index="tx_wssitemgr_hotels.dbdevmethod.I.1">Multi DB ( On for each developer )</label>
+			<label index="tx_wssitemgr_hotels.dbdevmethod">Database development method</label>
+			<label index="tx_wssitemgr_hotels.hoteldatabases">Databases</label>
+			<label index="tx_wssitemgr_hotels.monitoring">Monitoring</label>
+			<label index="tx_wssitemgr_domains">Domains</label>
+			<label index="tx_wssitemgr_domains.name">Name</label>
+			<label index="tx_wssitemgr_domains.aliases">Aliases</label>
+			<label index="tx_wssitemgr_domains.monitoring">Monitoring</label>
+			<label index="tx_wssitemgr_domainaliases">Domain aliases</label>
+			<label index="tx_wssitemgr_domainaliases.name">Name</label>
+			<label index="tx_wssitemgr_domainaliases.monitoring">Monitoring</label>
+		</languageKey>
+	</data>
+</T3locallang>
