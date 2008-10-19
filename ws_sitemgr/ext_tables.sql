@@ -58,6 +58,22 @@ CREATE TABLE tx_wssitemgr_hotels (
 
 
 
+
+#
+# Table structure for table 'tx_wssitemgr_domains_aliases_mm'
+# 
+#
+CREATE TABLE tx_wssitemgr_domains_aliases_mm (
+  uid_local int(11) DEFAULT '0' NOT NULL,
+  uid_foreign int(11) DEFAULT '0' NOT NULL,
+  tablenames varchar(30) DEFAULT '' NOT NULL,
+  sorting int(11) DEFAULT '0' NOT NULL,
+  KEY uid_local (uid_local),
+  KEY uid_foreign (uid_foreign)
+);
+
+
+
 #
 # Table structure for table 'tx_wssitemgr_domains'
 #

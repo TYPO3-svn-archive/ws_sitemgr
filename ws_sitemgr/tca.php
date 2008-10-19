@@ -73,9 +73,6 @@ $TCA["tx_wssitemgr_hotels"] = array (
 				"type" => "select",
 				"items" => Array (
 					Array("LLL:EXT:ws_sitemgr/locallang_db.xml:tx_wssitemgr_hotels.productionserver.I.0", "0"),
-					Array("LLL:EXT:ws_sitemgr/locallang_db.xml:tx_wssitemgr_hotels.productionserver.I.1", "1"),
-					Array("LLL:EXT:ws_sitemgr/locallang_db.xml:tx_wssitemgr_hotels.productionserver.I.2", "2"),
-					Array("LLL:EXT:ws_sitemgr/locallang_db.xml:tx_wssitemgr_hotels.productionserver.I.3", "3"),
 				),
 				"itemsProcFunc" => "tx_wssitemgr_tx_wssitemgr_hotels_productionserver->main",	
 				"size" => 1,	
@@ -89,9 +86,6 @@ $TCA["tx_wssitemgr_hotels"] = array (
 				"type" => "select",
 				"items" => Array (
 					Array("LLL:EXT:ws_sitemgr/locallang_db.xml:tx_wssitemgr_hotels.testserver.I.0", "0"),
-					Array("LLL:EXT:ws_sitemgr/locallang_db.xml:tx_wssitemgr_hotels.testserver.I.1", "1"),
-					Array("LLL:EXT:ws_sitemgr/locallang_db.xml:tx_wssitemgr_hotels.testserver.I.2", "2"),
-					Array("LLL:EXT:ws_sitemgr/locallang_db.xml:tx_wssitemgr_hotels.testserver.I.3", "3"),
 				),
 				"itemsProcFunc" => "tx_wssitemgr_tx_wssitemgr_hotels_testserver->main",	
 				"size" => 1,	
@@ -105,9 +99,6 @@ $TCA["tx_wssitemgr_hotels"] = array (
 				"type" => "select",
 				"items" => Array (
 					Array("LLL:EXT:ws_sitemgr/locallang_db.xml:tx_wssitemgr_hotels.devserver.I.0", "0"),
-					Array("LLL:EXT:ws_sitemgr/locallang_db.xml:tx_wssitemgr_hotels.devserver.I.1", "1"),
-					Array("LLL:EXT:ws_sitemgr/locallang_db.xml:tx_wssitemgr_hotels.devserver.I.2", "2"),
-					Array("LLL:EXT:ws_sitemgr/locallang_db.xml:tx_wssitemgr_hotels.devserver.I.3", "3"),
 				),
 				"itemsProcFunc" => "tx_wssitemgr_tx_wssitemgr_hotels_devserver->main",	
 				"size" => 1,	
@@ -121,9 +112,9 @@ $TCA["tx_wssitemgr_hotels"] = array (
 				"type" => "select",	
 				"foreign_table" => "tx_wssitemgr_domains",	
 				"foreign_table_where" => "AND tx_wssitemgr_domains.pid=###CURRENT_PID### ORDER BY tx_wssitemgr_domains.uid",	
-				"size" => 1,	
+				"size" => 5,	
 				"minitems" => 0,
-				"maxitems" => 1,	
+				"maxitems" => 99,	
 				"MM" => "tx_wssitemgr_hotels_domains_mm",	
 				"wizards" => Array(
 					"_PADDING" => 2,
@@ -170,9 +161,6 @@ $TCA["tx_wssitemgr_hotels"] = array (
 				"type" => "select",
 				"items" => Array (
 					Array("LLL:EXT:ws_sitemgr/locallang_db.xml:tx_wssitemgr_hotels.monitoring.I.0", "0"),
-					Array("LLL:EXT:ws_sitemgr/locallang_db.xml:tx_wssitemgr_hotels.monitoring.I.1", "1"),
-					Array("LLL:EXT:ws_sitemgr/locallang_db.xml:tx_wssitemgr_hotels.monitoring.I.2", "2"),
-					Array("LLL:EXT:ws_sitemgr/locallang_db.xml:tx_wssitemgr_hotels.monitoring.I.3", "3"),
 				),
 				"itemsProcFunc" => "tx_wssitemgr_tx_wssitemgr_hotels_monitoring->main",	
 				"size" => 1,	
@@ -213,9 +201,25 @@ $TCA["tx_wssitemgr_domains"] = array (
 				"type" => "select",	
 				"foreign_table" => "tx_wssitemgr_domainaliases",	
 				"foreign_table_where" => "AND tx_wssitemgr_domainaliases.pid=###CURRENT_PID### ORDER BY tx_wssitemgr_domainaliases.uid",	
-				"size" => 1,	
+				"size" => 5,	
 				"minitems" => 0,
-				"maxitems" => 1,
+				"maxitems" => 99,	
+				"MM" => "tx_wssitemgr_domains_aliases_mm",	
+				"wizards" => Array(
+					"_PADDING" => 2,
+					"_VERTICAL" => 1,
+					"add" => Array(
+						"type" => "script",
+						"title" => "Create new record",
+						"icon" => "add.gif",
+						"params" => Array(
+							"table"=>"tx_wssitemgr_domainaliases",
+							"pid" => "###CURRENT_PID###",
+							"setValue" => "prepend"
+						),
+						"script" => "wizard_add.php",
+					),
+				),
 			)
 		),
 		"monitoring" => Array (		
@@ -225,9 +229,6 @@ $TCA["tx_wssitemgr_domains"] = array (
 				"type" => "select",
 				"items" => Array (
 					Array("LLL:EXT:ws_sitemgr/locallang_db.xml:tx_wssitemgr_domains.monitoring.I.0", "0"),
-					Array("LLL:EXT:ws_sitemgr/locallang_db.xml:tx_wssitemgr_domains.monitoring.I.1", "1"),
-					Array("LLL:EXT:ws_sitemgr/locallang_db.xml:tx_wssitemgr_domains.monitoring.I.2", "2"),
-					Array("LLL:EXT:ws_sitemgr/locallang_db.xml:tx_wssitemgr_domains.monitoring.I.3", "3"),
 				),
 				"itemsProcFunc" => "tx_wssitemgr_tx_wssitemgr_domains_monitoring->main",	
 				"size" => 1,	
@@ -276,9 +277,6 @@ $TCA["tx_wssitemgr_domainaliases"] = array (
 				"type" => "select",
 				"items" => Array (
 					Array("LLL:EXT:ws_sitemgr/locallang_db.xml:tx_wssitemgr_domainaliases.monitoring.I.0", "0"),
-					Array("LLL:EXT:ws_sitemgr/locallang_db.xml:tx_wssitemgr_domainaliases.monitoring.I.1", "1"),
-					Array("LLL:EXT:ws_sitemgr/locallang_db.xml:tx_wssitemgr_domainaliases.monitoring.I.2", "2"),
-					Array("LLL:EXT:ws_sitemgr/locallang_db.xml:tx_wssitemgr_domainaliases.monitoring.I.3", "3"),
 				),
 				"itemsProcFunc" => "tx_wssitemgr_tx_wssitemgr_domainaliases_monitoring->main",	
 				"size" => 1,	

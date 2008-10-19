@@ -15,11 +15,10 @@ if (TYPO3_MODE=="BE")	include_once(t3lib_extMgm::extPath("ws_sitemgr")."class.tx
 $TCA["tx_wssitemgr_hotels"] = array (
 	"ctrl" => array (
 		'title'     => 'LLL:EXT:ws_sitemgr/locallang_db.xml:tx_wssitemgr_hotels',		
-		'label'     => 'uid',	
+		'label'     => 'name',	
 		'tstamp'    => 'tstamp',
 		'crdate'    => 'crdate',
 		'cruser_id' => 'cruser_id',
-		'type' => 'name',	
 		'default_sortby' => "ORDER BY name",	
 		'delete' => 'deleted',	
 		'enablecolumns' => array (		
@@ -41,11 +40,11 @@ if (TYPO3_MODE=="BE")	include_once(t3lib_extMgm::extPath("ws_sitemgr")."class.tx
 $TCA["tx_wssitemgr_domains"] = array (
 	"ctrl" => array (
 		'title'     => 'LLL:EXT:ws_sitemgr/locallang_db.xml:tx_wssitemgr_domains',		
-		'label'     => 'uid',	
+		'label'     => 'name',	
 		'tstamp'    => 'tstamp',
 		'crdate'    => 'crdate',
 		'cruser_id' => 'cruser_id',
-		'default_sortby' => "ORDER BY crdate",	
+		'default_sortby' => "ORDER BY name",	
 		'dynamicConfigFile' => t3lib_extMgm::extPath($_EXTKEY).'tca.php',
 		'iconfile'          => t3lib_extMgm::extRelPath($_EXTKEY).'icon_tx_wssitemgr_domains.gif',
 	),
@@ -60,11 +59,11 @@ if (TYPO3_MODE=="BE")	include_once(t3lib_extMgm::extPath("ws_sitemgr")."class.tx
 $TCA["tx_wssitemgr_domainaliases"] = array (
 	"ctrl" => array (
 		'title'     => 'LLL:EXT:ws_sitemgr/locallang_db.xml:tx_wssitemgr_domainaliases',		
-		'label'     => 'uid',	
+		'label'     => 'name',	
 		'tstamp'    => 'tstamp',
 		'crdate'    => 'crdate',
 		'cruser_id' => 'cruser_id',
-		'default_sortby' => "ORDER BY crdate",	
+		'default_sortby' => "ORDER BY name",	
 		'delete' => 'deleted',	
 		'enablecolumns' => array (		
 			'disabled' => 'hidden',
