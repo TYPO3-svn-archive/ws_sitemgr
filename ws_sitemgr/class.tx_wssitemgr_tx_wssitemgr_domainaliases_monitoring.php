@@ -43,7 +43,7 @@ class tx_wssitemgr_tx_wssitemgr_domainaliases_monitoring {
 */
 									// Adding an item!
 								$params['items'][] = array($pObj->sL("Added label by PHP function|Tilføjet Dansk tekst med PHP funktion"), 999);
-
+//Test
 								// No return - the $params and $pObj variables are passed by reference, so just change content in then and it is passed back automatically...
 							}
 						}
