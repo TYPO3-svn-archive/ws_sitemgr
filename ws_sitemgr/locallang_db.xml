@@ -6,25 +6,16 @@
 	</meta>
 	<data type="array">
 		<languageKey index="default" type="array">
-			<label index="tx_wssitemgr_hotels">Hotel</label>
+			<label index="tx_wssitemgr_hotels">Hotels</label>
 			<label index="tx_wssitemgr_hotels.name">Name</label>
 			<label index="tx_wssitemgr_hotels.developers">Developers</label>
-			<label index="tx_wssitemgr_hotels.productionserver">Production server</label>
-			<label index="tx_wssitemgr_hotels.testserver">Test server</label>
-			<label index="tx_wssitemgr_hotels.devserver">Development server</label>
 			<label index="tx_wssitemgr_hotels.domains">Domains</label>
-			<label index="tx_wssitemgr_hotels.dbdevmethod.I.0">Single DB</label>
-			<label index="tx_wssitemgr_hotels.dbdevmethod.I.1">Multi DB ( On for each developer )</label>
-			<label index="tx_wssitemgr_hotels.dbdevmethod">Database development method</label>
-			<label index="tx_wssitemgr_hotels.hoteldatabases">Databases</label>
-			<label index="tx_wssitemgr_hotels.monitoring">Monitoring</label>
+			<label index="tx_wssitemgr_hotels.servers">Servers</label>
 			<label index="tx_wssitemgr_domains">Domains</label>
 			<label index="tx_wssitemgr_domains.name">Name</label>
 			<label index="tx_wssitemgr_domains.aliases">Aliases</label>
-			<label index="tx_wssitemgr_domains.monitoring">Monitoring</label>
 			<label index="tx_wssitemgr_domainaliases">Domain aliases</label>
 			<label index="tx_wssitemgr_domainaliases.name">Name</label>
-			<label index="tx_wssitemgr_domainaliases.monitoring">Monitoring</label>
 			<label index="tx_wssitemgr_servers">Servers</label>
 			<label index="tx_wssitemgr_servers.name">Name</label>
 			<label index="tx_wssitemgr_servers.host">Host</label>

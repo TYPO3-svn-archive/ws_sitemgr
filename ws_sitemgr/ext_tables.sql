@@ -29,6 +29,22 @@ CREATE TABLE tx_wssitemgr_hotels_domains_mm (
 
 
 
+
+#
+# Table structure for table 'tx_wssitemgr_hotels_servers_mm'
+# 
+#
+CREATE TABLE tx_wssitemgr_hotels_servers_mm (
+  uid_local int(11) DEFAULT '0' NOT NULL,
+  uid_foreign int(11) DEFAULT '0' NOT NULL,
+  tablenames varchar(30) DEFAULT '' NOT NULL,
+  sorting int(11) DEFAULT '0' NOT NULL,
+  KEY uid_local (uid_local),
+  KEY uid_foreign (uid_foreign)
+);
+
+
+
 #
 # Table structure for table 'tx_wssitemgr_hotels'
 #
@@ -44,13 +60,8 @@ CREATE TABLE tx_wssitemgr_hotels (
 	endtime int(11) DEFAULT '0' NOT NULL,
 	name tinytext NOT NULL,
 	developers int(11) DEFAULT '0' NOT NULL,
-	productionserver int(11) DEFAULT '0' NOT NULL,
-	testserver int(11) DEFAULT '0' NOT NULL,
-	devserver int(11) DEFAULT '0' NOT NULL,
 	domains int(11) DEFAULT '0' NOT NULL,
-	dbdevmethod int(11) DEFAULT '0' NOT NULL,
-	hoteldatabases tinytext NOT NULL,
-	monitoring int(11) DEFAULT '0' NOT NULL,
+	servers int(11) DEFAULT '0' NOT NULL,
 	
 	PRIMARY KEY (uid),
 	KEY parent (pid)
@@ -85,7 +96,6 @@ CREATE TABLE tx_wssitemgr_domains (
 	cruser_id int(11) DEFAULT '0' NOT NULL,
 	name tinytext NOT NULL,
 	aliases int(11) DEFAULT '0' NOT NULL,
-	monitoring int(11) DEFAULT '0' NOT NULL,
 	
 	PRIMARY KEY (uid),
 	KEY parent (pid)
@@ -105,7 +115,6 @@ CREATE TABLE tx_wssitemgr_domainaliases (
 	deleted tinyint(4) DEFAULT '0' NOT NULL,
 	hidden tinyint(4) DEFAULT '0' NOT NULL,
 	name tinytext NOT NULL,
-	monitoring int(11) DEFAULT '0' NOT NULL,
 	
 	PRIMARY KEY (uid),
 	KEY parent (pid)

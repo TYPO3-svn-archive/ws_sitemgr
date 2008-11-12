@@ -1,17 +1,5 @@
 <?php
 if (!defined ('TYPO3_MODE')) 	die ('Access denied.');
-
-if (TYPO3_MODE=="BE")	include_once(t3lib_extMgm::extPath("ws_sitemgr")."class.tx_wssitemgr_tx_wssitemgr_hotels_productionserver.php");
-
-
-if (TYPO3_MODE=="BE")	include_once(t3lib_extMgm::extPath("ws_sitemgr")."class.tx_wssitemgr_tx_wssitemgr_hotels_testserver.php");
-
-
-if (TYPO3_MODE=="BE")	include_once(t3lib_extMgm::extPath("ws_sitemgr")."class.tx_wssitemgr_tx_wssitemgr_hotels_devserver.php");
-
-
-if (TYPO3_MODE=="BE")	include_once(t3lib_extMgm::extPath("ws_sitemgr")."class.tx_wssitemgr_tx_wssitemgr_hotels_monitoring.php");
-
 $TCA["tx_wssitemgr_hotels"] = array (
 	"ctrl" => array (
 		'title'     => 'LLL:EXT:ws_sitemgr/locallang_db.xml:tx_wssitemgr_hotels',		
@@ -30,12 +18,9 @@ $TCA["tx_wssitemgr_hotels"] = array (
 		'iconfile'          => t3lib_extMgm::extRelPath($_EXTKEY).'icon_tx_wssitemgr_hotels.gif',
 	),
 	"feInterface" => array (
-		"fe_admin_fieldList" => "hidden, starttime, endtime, name, developers, productionserver, testserver, devserver, domains, dbdevmethod, hoteldatabases, monitoring",
+		"fe_admin_fieldList" => "hidden, starttime, endtime, name, developers, domains, servers",
 	)
 );
-
-
-if (TYPO3_MODE=="BE")	include_once(t3lib_extMgm::extPath("ws_sitemgr")."class.tx_wssitemgr_tx_wssitemgr_domains_monitoring.php");
 
 $TCA["tx_wssitemgr_domains"] = array (
 	"ctrl" => array (
@@ -49,12 +34,9 @@ $TCA["tx_wssitemgr_domains"] = array (
 		'iconfile'          => t3lib_extMgm::extRelPath($_EXTKEY).'icon_tx_wssitemgr_domains.gif',
 	),
 	"feInterface" => array (
-		"fe_admin_fieldList" => "name, aliases, monitoring",
+		"fe_admin_fieldList" => "name, aliases",
 	)
 );
-
-
-if (TYPO3_MODE=="BE")	include_once(t3lib_extMgm::extPath("ws_sitemgr")."class.tx_wssitemgr_tx_wssitemgr_domainaliases_monitoring.php");
 
 $TCA["tx_wssitemgr_domainaliases"] = array (
 	"ctrl" => array (
@@ -72,7 +54,7 @@ $TCA["tx_wssitemgr_domainaliases"] = array (
 		'iconfile'          => t3lib_extMgm::extRelPath($_EXTKEY).'icon_tx_wssitemgr_domainaliases.gif',
 	),
 	"feInterface" => array (
-		"fe_admin_fieldList" => "hidden, name, monitoring",
+		"fe_admin_fieldList" => "hidden, name",
 	)
 );
 
