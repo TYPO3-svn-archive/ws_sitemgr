@@ -3,7 +3,7 @@
 ########################################################################
 # Extension Manager/Repository config file for ext: "ws_sitemgr"
 #
-# Auto generated 12-11-2008 20:37
+# Auto generated 12-11-2008 20:41
 #
 # Manual updates:
 # Only the data in the array - anything else is removed by next write.
@@ -17,7 +17,7 @@ $EM_CONF[$_EXTKEY] = array(
 	'author' => 'Bo Korshøj Andersen',
 	'author_email' => 'bo@wildside.dk',
 	'shy' => '',
-	'dependencies' => 'cms,ws_sitemgrservices',
+	'dependencies' => 'cms',
 	'conflicts' => '',
 	'priority' => '',
 	'module' => '',
@@ -33,7 +33,6 @@ $EM_CONF[$_EXTKEY] = array(
 	'constraints' => array(
 		'depends' => array(
 			'cms' => '',
-			'ws_sitemgrservices' => '',
 		),
 		'conflicts' => array(
 		),

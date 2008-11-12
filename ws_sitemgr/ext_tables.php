@@ -14,7 +14,6 @@ $TCA["tx_wssitemgr_hotels"] = array (
 			'starttime' => 'starttime',	
 			'endtime' => 'endtime',
 		),
-		'dynamicConfigFile' => t3lib_extMgm::extPath($_EXTKEY).'tca.php',
 		'iconfile'          => t3lib_extMgm::extRelPath($_EXTKEY).'icon_tx_wssitemgr_hotels.gif',
 	),
 	"feInterface" => array (
@@ -30,7 +29,6 @@ $TCA["tx_wssitemgr_domains"] = array (
 		'crdate'    => 'crdate',
 		'cruser_id' => 'cruser_id',
 		'default_sortby' => "ORDER BY name",	
-		'dynamicConfigFile' => t3lib_extMgm::extPath($_EXTKEY).'tca.php',
 		'iconfile'          => t3lib_extMgm::extRelPath($_EXTKEY).'icon_tx_wssitemgr_domains.gif',
 	),
 	"feInterface" => array (
@@ -50,7 +48,6 @@ $TCA["tx_wssitemgr_domainaliases"] = array (
 		'enablecolumns' => array (		
 			'disabled' => 'hidden',
 		),
-		'dynamicConfigFile' => t3lib_extMgm::extPath($_EXTKEY).'tca.php',
 		'iconfile'          => t3lib_extMgm::extRelPath($_EXTKEY).'icon_tx_wssitemgr_domainaliases.gif',
 	),
 	"feInterface" => array (
